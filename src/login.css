@@ -1,0 +1,295 @@
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+}
+
+.App {
+  min-height: 100vh;
+}
+
+/* Estilos del Login y Registro */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e4e5df 0%, #e2e3aa 100%);
+  padding: 20px;
+}
+
+.login-box {
+  background: white;
+  padding: 40px;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-box h2 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #333;
+  font-size: 24px;
+}
+
+.input-field {
+  width: 100%;
+  padding: 15px;
+  margin-bottom: 20px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.3s;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 15px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 20px;
+  transition: background 0.3s;
+}
+
+.btn-primary:hover {
+  background: #5a6fd8;
+}
+
+.divider {
+  text-align: center;
+  margin: 20px 0;
+  color: #666;
+  position: relative;
+}
+
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #ddd;
+}
+
+.divider {
+  background: white;
+  padding: 0 15px;
+  position: relative;
+  z-index: 1;
+}
+
+.btn-wallet {
+  width: 100%;
+  padding: 15px;
+  background: #f8f9fa;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  margin-bottom: 20px;
+  transition: all 0.3s;
+}
+
+.btn-wallet:hover {
+  background: #ff9500;
+  color: white;
+  border-color: #ff9500;
+}
+
+.switch-text {
+  text-align: center;
+  color: #666;
+}
+
+.link {
+  color: #667eea;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 5px;
+}
+
+.link:hover {
+  color: #5a6fd8;
+}
+
+/* Estilos del Dashboard */
+.dashboard {
+  min-height: 100vh;
+  background: #f8f9fa;
+}
+
+.dashboard-header {
+  background: #667eea;
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.dashboard-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.user-info span {
+  font-size: 16px;
+}
+
+.btn-logout {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-logout:hover {
+  background: #c82333;
+}
+
+.dashboard-content {
+  padding: 40px 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.dashboard-content h2 {
+  color: #333;
+  margin-bottom: 10px;
+  font-size: 28px;
+}
+
+.dashboard-content > p {
+  color: #666;
+  margin-bottom: 40px;
+  font-size: 18px;
+}
+
+.zkp-info {
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  margin-bottom: 40px;
+  text-align: left;
+}
+
+.zkp-info h3 {
+  color: #333;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.info-box {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  word-wrap: break-word;
+}
+
+.info-box p {
+  margin: 5px 0;
+  color: #333;
+}
+
+.info-box code {
+  display: block;
+  background: #e9ecef;
+  padding: 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: #667eea;
+  margin-top: 5px;
+  overflow-x: auto;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 30px;
+  margin-top: 40px;
+}
+
+.feature-card {
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  transition: transform 0.3s;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+}
+
+.feature-card h3 {
+  color: #333;
+  margin-bottom: 15px;
+  font-size: 20px;
+}
+
+.feature-card p {
+  color: #666;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.feature-card small {
+  display: block;
+  margin-top: 10px;
+  color: #28a745;
+  font-weight: bold;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .login-box {
+    margin: 10px;
+    padding: 30px 20px;
+  }
+  
+  .dashboard-header {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  
+  .features {
+    grid-template-columns: 1fr;
+  }
+  
+  .dashboard-content {
+    padding: 20px 15px;
+  }
+}

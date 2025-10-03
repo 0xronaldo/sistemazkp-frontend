@@ -1,70 +1,204 @@
-# Getting Started with Create React App
+# Sistema ZKP - Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React SPA para sistema de autenticación descentralizada con Zero Knowledge Proofs (ZKP).
 
-## Available Scripts
+## 🚀 Inicio Rápido
 
-In the project directory, you can run:
+```bash
+npm install
+npm start
+```
 
-### `npm start`
+Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## 🏗️ Arquitectura
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Componentes Principales (todos en `src/App.js`)
 
-### `npm test`
+- **LoginScreen**: Login con email/password o MetaMask
+- **RegisterScreen**: Registro de nuevos usuarios
+- **DashboardScreen**: Dashboard con información ZKP
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Estado de la Aplicación
 
-### `npm run build`
+```javascript
+{
+  currentView: 'login' | 'register' | 'dashboard',
+  user: {
+    name: string,
+    email: string,
+    type: 'normal' | 'wallet' | 'zkp',
+    address?: string,      // Si es wallet
+    did?: string,          // DID de Polygon ID
+    zkpData?: object,      // Datos ZKP del issuer
+    credential?: object    // Credencial Verificable
+  }
+}
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 🔌 Integración con Backend
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Backend URL
+```javascript
+const BACKEND_URL = 'http://localhost:5000';
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Endpoints Usados
 
-### `npm run eject`
+#### 1. Registro
+```javascript
+POST /api/register
+Body: { name, email, password }
+Response: { success, did, user, zkpData, credential }
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+#### 2. Login
+```javascript
+POST /api/login
+Body: { email, password }
+Response: { success, did, user, zkpData }
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+#### 3. Wallet Auth
+```javascript
+POST /api/wallet-auth
+Body: { walletAddress, name }
+Response: { success, did, user, zkpData, credential }
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## 🎨 Estilos
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Todo centralizado en `src/login.css`:
 
-## Learn More
+- `.login-container` - Pantallas de auth con gradiente
+- `.dashboard` - Layout del dashboard
+- `.zkp-info` - Contenedor de información ZKP
+- `.info-box` - Cajas de información con DIDs
+- Responsive design para móviles
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## 🦊 MetaMask Integration
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```javascript
+// Conectar wallet
+const accounts = await window.ethereum.request({
+  method: 'eth_requestAccounts'
+});
 
-### Code Splitting
+// Enviar al backend para crear/obtener DID
+const response = await fetch(`${BACKEND_URL}/api/wallet-auth`, {
+  method: 'POST',
+  body: JSON.stringify({ walletAddress: accounts[0] })
+});
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## 📦 Dependencias
 
-### Analyzing the Bundle Size
+- `react` ^19.1.1
+- `react-dom` ^19.1.1
+- `react-scripts` 5.0.1
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## 🧪 Testing
 
-### Making a Progressive Web App
+```bash
+npm test        # Tests con Jest
+npm run build   # Build de producción
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## 📁 Estructura
 
-### Advanced Configuration
+```
+src/
+├── App.js           # Componentes y lógica principal
+├── App.css          # Estilos generales
+├── login.css        # Estilos de auth y dashboard
+├── index.js         # Entry point
+└── components/      # (vacío - pendiente extracción)
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 🔐 Flujo de Usuario
 
-### Deployment
+### Registro
+1. Usuario ingresa nombre, email, password
+2. Click en "Crear Cuenta"
+3. Frontend → Backend → Issuer Node
+4. Recibe DID y credencial verificable
+5. Muestra dashboard con información ZKP
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+### Login con Wallet
+1. Usuario click en "Conectar Wallet"
+2. MetaMask solicita permisos
+3. Frontend envía wallet address al backend
+4. Backend genera/obtiene DID
+5. Muestra dashboard con DID de wallet
 
-### `npm run build` fails to minify
+## 📊 Dashboard
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Muestra información ZKP cuando disponible:
+
+```jsx
+{user.did && (
+  <div className="zkp-info">
+    <h3>🔐 Tu Identidad ZKP</h3>
+    <div className="info-box">
+      <p><strong>DID:</strong></p>
+      <code>{user.did}</code>
+    </div>
+    <div className="info-box">
+      <p><strong>Estado:</strong> {user.zkpData.state}</p>
+      <p><strong>Tipo:</strong> {user.type}</p>
+    </div>
+  </div>
+)}
+```
+
+## 🛠️ Configuración
+
+### Backend URL
+Cambiar en `App.js` si backend corre en otro puerto:
+```javascript
+const BACKEND_URL = 'http://localhost:5000';  // Cambiar aquí
+```
+
+### MetaMask
+Asegúrate de tener MetaMask instalado para autenticación con wallet.
+
+## 📚 Más Información
+
+- **Documentación completa**: Ver `backend_zkp/README.md`
+- **Schemas y VCs**: Ver `backend_zkp/SCHEMAS-DOCS.md`
+- **JSON-LD explicado**: Ver `backend_zkp/JSON-LD-EXPLAINED.md`
+- **Ejemplos**: Ver `backend_zkp/EXAMPLES.md`
+
+## 🐛 Troubleshooting
+
+### Error: "Cannot connect to backend"
+**Solución**: Verificar que backend esté corriendo en puerto 5000
+```bash
+cd backend_zkp && npm run dev
+```
+
+### Error: "MetaMask no está instalado"
+**Solución**: Instalar extension de MetaMask en tu navegador
+
+### Error: "Failed to fetch"
+**Solución**: Verificar CORS en backend - debe tener `cors()` habilitado
+
+## 🚀 Deploy
+
+```bash
+npm run build    # Genera carpeta build/
+# Subir contenido de build/ a hosting (Vercel, Netlify, etc.)
+```
+
+## 📝 Notas de Desarrollo
+
+- Todos los componentes están en un solo archivo (`App.js`)
+- Pendiente: Extraer a archivos separados en `components/`
+- Estado se maneja con hooks de React (`useState`)
+- No hay routing - solo cambio de vista con `currentView`
+
+---
+
+**Estado**: ✅ Funcional - Integrado con backend ZKP
+
+Creado con [Create React App](https://github.com/facebook/create-react-app)
