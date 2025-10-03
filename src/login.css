@@ -272,6 +272,30 @@ body {
   font-weight: bold;
 }
 
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  background: white;
+  padding: 30px 60px;
+  border-radius: 10px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #667eea;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .login-box {

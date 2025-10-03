@@ -1,134 +1,109 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './login.css';
 
+// Importar funciones de los componentes
+import { registerUser, loginUser, logoutUser, getCurrentUser } from './components/athenticacion';
+import { connectWallet, authenticateWithWallet } from './components/logicadewallet';
+import { formatDIDShort, getDIDDisplayInfo } from './components/bidi';
+
 function App() {
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'register', 'dashboard'
+  const [currentView, setCurrentView] = useState('login');
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const BACKEND_URL = 'http://localhost:5000';
+  // Verificar si hay usuario guardado al cargar la app
+  useEffect(() => {
+    const savedUser = getCurrentUser();
+    if (savedUser) {
+      setUser(savedUser);
+      setCurrentView('dashboard');
+    }
+  }, []);
 
+  // Handler para login con email/password
   const handleLogin = async (email, password) => {
+    setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Agregar datos ZKP al usuario si están disponibles
-        const userData = {
-          ...data.user,
-          did: data.did || null,
-          zkpData: data.zkpData || null
-        };
-        setUser(userData);
-        setCurrentView('dashboard');
-      } else {
-        alert(data.error || 'Error al iniciar sesión');
-      }
+      console.log('[App] Iniciando login...');
+      const userData = await loginUser(email, password);
+      setUser(userData);
+      setCurrentView('dashboard');
+      alert('Login exitoso');
     } catch (error) {
-      console.error('Error:', error);
-      alert('Error de conexión con el servidor');
+      console.error('[App] Error en login:', error);
+      alert(error.message || 'Error al iniciar sesion');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Función para registro
+  // Handler para registro con email/password
   const handleRegister = async (name, email, password) => {
+    setLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Guardar datos ZKP y DID generados
-        const userData = {
-          ...data.user,
-          did: data.did,
-          zkpData: data.zkpData
-        };
-        setUser(userData);
-        setCurrentView('dashboard');
-        alert('¡Cuenta creada! Tu DID: ' + data.did);
+      console.log('[App] Iniciando registro...');
+      const userData = await registerUser(name, email, password);
+      setUser(userData);
+      setCurrentView('dashboard');
+      
+      if (userData.did) {
+        alert(`Cuenta creada exitosamente! Tu DID: ${formatDIDShort(userData.did)}`);
       } else {
-        alert(data.error || 'Error al crear cuenta');
+        alert('Cuenta creada exitosamente!');
       }
     } catch (error) {
-      console.error('Error:', error);
-      alert('Error de conexión con el servidor');
+      console.error('[App] Error en registro:', error);
+      alert(error.message || 'Error al crear cuenta');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Función para conectar wallet
+  // Handler para login con wallet
   const handleWalletLogin = async () => {
+    setLoading(true);
     try {
-      if (window.ethereum) {
-        const accounts = await window.ethereum.request({
-          method: 'eth_requestAccounts'
-        });
-        
-        const walletAddress = accounts[0];
-
-        // Enviar al backend para crear/obtener DID
-        const response = await fetch(`${BACKEND_URL}/api/wallet-auth`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            walletAddress,
-            name: `Wallet ${walletAddress.slice(0, 6)}...`
-          })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          const userData = {
-            ...data.user,
-            address: walletAddress,
-            did: data.did,
-            zkpData: data.zkpData,
-            credential: data.credential
-          };
-          setUser(userData);
-          setCurrentView('dashboard');
-          alert('¡Wallet conectada! Tu DID: ' + data.did);
-        } else {
-          alert(data.error || 'Error al conectar wallet');
-        }
+      console.log('[App] Conectando wallet...');
+      const walletAddress = await connectWallet();
+      const userData = await authenticateWithWallet(walletAddress);
+      setUser(userData);
+      setCurrentView('dashboard');
+      
+      if (userData.did) {
+        alert(`Wallet conectada! Tu DID: ${formatDIDShort(userData.did)}`);
       } else {
-        alert('MetaMask no está instalado');
+        alert('Wallet conectada exitosamente!');
       }
     } catch (error) {
-      console.error('Error:', error);
-      alert('Error conectando wallet');
+      console.error('[App] Error en wallet login:', error);
+      alert(error.message || 'Error al conectar wallet');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Función para logout
+  // Handler para logout
   const handleLogout = () => {
+    console.log('[App] Cerrando sesion...');
+    logoutUser();
     setUser(null);
     setCurrentView('login');
   };
 
   return (
     <div className="App">
+      {loading && (
+        <div className="loading-overlay">
+          <div className="loading-spinner">Cargando...</div>
+        </div>
+      )}
+
       {currentView === 'login' && (
         <LoginScreen 
           onLogin={handleLogin}
           onWalletLogin={handleWalletLogin}
           onShowRegister={() => setCurrentView('register')}
+          loading={loading}
         />
       )}
       
@@ -136,10 +111,11 @@ function App() {
         <RegisterScreen 
           onRegister={handleRegister}
           onShowLogin={() => setCurrentView('login')}
+          loading={loading}
         />
       )}
       
-      {currentView === 'dashboard' && (
+      {currentView === 'dashboard' && user && (
         <DashboardScreen 
           user={user}
           onLogout={handleLogout}
@@ -150,7 +126,7 @@ function App() {
 }
 
 // Componente de Login
-function LoginScreen({ onLogin, onWalletLogin, onShowRegister }) {
+function LoginScreen({ onLogin, onWalletLogin, onShowRegister, loading }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -166,7 +142,7 @@ function LoginScreen({ onLogin, onWalletLogin, onShowRegister }) {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h2>Iniciar Sesión</h2>
+        <h2>Iniciar Sesion</h2>
         
         <form onSubmit={handleSubmit}>
           <input 
@@ -175,6 +151,7 @@ function LoginScreen({ onLogin, onWalletLogin, onShowRegister }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="input-field"
+            disabled={loading}
           />
           
           <input 
@@ -183,22 +160,27 @@ function LoginScreen({ onLogin, onWalletLogin, onShowRegister }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="input-field"
+            disabled={loading}
           />
           
-          <button type="submit" className="btn-primary">
-            Entrar
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Cargando...' : 'Entrar'}
           </button>
         </form>
         
         <div className="divider">O</div>
         
-        <button onClick={onWalletLogin} className="btn-wallet">
-          🦊 Conectar Wallet
+        <button 
+          onClick={onWalletLogin} 
+          className="btn-wallet"
+          disabled={loading}
+        >
+          Conectar Wallet
         </button>
         
         <p className="switch-text">
           ¿No tienes cuenta? 
-          <span onClick={onShowRegister} className="link">Regístrate</span>
+          <span onClick={onShowRegister} className="link">Registrate</span>
         </p>
       </div>
     </div>
@@ -206,7 +188,7 @@ function LoginScreen({ onLogin, onWalletLogin, onShowRegister }) {
 }
 
 // Componente de Registro
-function RegisterScreen({ onRegister, onShowLogin }) {
+function RegisterScreen({ onRegister, onShowLogin, loading }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -236,6 +218,7 @@ function RegisterScreen({ onRegister, onShowLogin }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="input-field"
+            disabled={loading}
           />
           
           <input 
@@ -244,6 +227,7 @@ function RegisterScreen({ onRegister, onShowLogin }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="input-field"
+            disabled={loading}
           />
           
           <input 
@@ -252,16 +236,17 @@ function RegisterScreen({ onRegister, onShowLogin }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="input-field"
+            disabled={loading}
           />
           
-          <button type="submit" className="btn-primary">
-            Crear Cuenta
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Creando...' : 'Crear Cuenta'}
           </button>
         </form>
         
         <p className="switch-text">
           ¿Ya tienes cuenta? 
-          <span onClick={onShowLogin} className="link">Inicia Sesión</span>
+          <span onClick={onShowLogin} className="link">Inicia Sesion</span>
         </p>
       </div>
     </div>
@@ -270,15 +255,17 @@ function RegisterScreen({ onRegister, onShowLogin }) {
 
 // Componente del Dashboard
 function DashboardScreen({ user, onLogout }) {
+  const didInfo = user.did ? getDIDDisplayInfo(user.did) : null;
+
   return (
     <div className="dashboard">
       <div className="dashboard-header">
         <h1>Sistema ZKP</h1>
         <div className="user-info">
-          {user.type === 'wallet' ? (
-            <span>🦊 {user.address}</span>
+          {user.walletAddress ? (
+            <span>Wallet: {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}</span>
           ) : (
-            <span>👤 Hola, {user.name}</span>
+            <span>Hola, {user.name}</span>
           )}
           <button onClick={onLogout} className="btn-logout">
             Salir
@@ -287,37 +274,69 @@ function DashboardScreen({ user, onLogout }) {
       </div>
       
       <div className="dashboard-content">
-        <h2>¡Bienvenido!</h2>
-        <p>Has iniciado sesión correctamente</p>
+        <h2>Bienvenido</h2>
+        <p>Has iniciado sesion correctamente</p>
         
-        {/* Mostrar información ZKP si está disponible */}
-        {user.did && (
+        {didInfo && didInfo.valid && (
           <div className="zkp-info">
-            <h3>🔐 Tu Identidad ZKP</h3>
+            <h3>Tu Identidad Descentralizada (DID)</h3>
             <div className="info-box">
-              <p><strong>DID:</strong></p>
-              <code>{user.did}</code>
+              <p><strong>DID Completo:</strong></p>
+              <code className="did-full">{didInfo.full}</code>
             </div>
-            {user.zkpData && (
-              <div className="info-box">
-                <p><strong>Estado:</strong> {user.zkpData.state || 'Activo'}</p>
-                <p><strong>Tipo:</strong> {user.type}</p>
-              </div>
-            )}
+            <div className="info-box">
+              <p><strong>Metodo:</strong> {didInfo.method}</p>
+              <p><strong>Red:</strong> {didInfo.network}</p>
+              <p><strong>Identificador:</strong> {didInfo.identifier.slice(0, 20)}...</p>
+            </div>
+          </div>
+        )}
+
+        {user.zkpData && (
+          <div className="zkp-info">
+            <h3>Datos ZKP</h3>
+            <div className="info-box">
+              <p><strong>Estado:</strong> {user.zkpData.state || 'Activo'}</p>
+              <p><strong>Tipo:</strong> {user.type}</p>
+              {user.zkpData.timestamp && (
+                <p><strong>Creado:</strong> {new Date(user.zkpData.timestamp).toLocaleString()}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {user.credential && (
+          <div className="zkp-info">
+            <h3>Credencial Verificable</h3>
+            <div className="info-box">
+              <p><strong>Tipos:</strong></p>
+              <ul>
+                {user.credential.type?.map((type, idx) => (
+                  <li key={idx}>{type}</li>
+                ))}
+              </ul>
+              {user.credential.credentialSubject && (
+                <div>
+                  <p><strong>Datos del Sujeto:</strong></p>
+                  <p>Metodo de Auth: {user.credential.credentialSubject.authMethod}</p>
+                  <p>Estado: {user.credential.credentialSubject.accountState}</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
         
         <div className="features">
           <div className="feature-card">
-            <h3>🔐 Pruebas ZKP</h3>
+            <h3>Pruebas ZKP</h3>
             <p>Crear pruebas de conocimiento cero</p>
             {user.did && (
-              <small>DID disponible ✓</small>
+              <small className="status-ok">DID disponible</small>
             )}
           </div>
           
           <div className="feature-card">
-            <h3>📊 Estadísticas</h3>
+            <h3>Estadisticas</h3>
             <p>Ver tu actividad</p>
           </div>
         </div>
