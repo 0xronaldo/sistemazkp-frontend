@@ -68,6 +68,16 @@ export const authenticateWithWallet = async (walletAddress, signature = null) =>
             walletAddress,
             hasCredential: !!credential
         });
+        
+        console.log('[Wallet] 📄 CREDENCIAL COMPLETA recibida:', JSON.stringify(credential, null, 2));
+        
+        // Validar que la credencial tenga los campos necesarios
+        if (credential && !credential.credentialSubject) {
+            console.warn('[Wallet] ⚠️ ADVERTENCIA: Credencial incompleta - falta credentialSubject');
+        }
+        if (credential && !credential.issuer) {
+            console.warn('[Wallet] ⚠️ ADVERTENCIA: Credencial incompleta - falta issuer');
+        }
 
         // Preparar datos del usuario
         const userData = {

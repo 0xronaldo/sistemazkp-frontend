@@ -44,14 +44,15 @@ const decodeData = (encodedData) => {
 
 // ============================================
 // el uso de storage de forma encryptada
+// CAMBIADO A localStorage para persistencia
 // ============================================
 
 export const SecureStorage = {
-    // Guardar datos codificados
+    // Guardar datos codificados en localStorage (persiste al cerrar navegador)
     setItem: (key, value) => {
         const encoded = encodeData(value);
         if (encoded) {
-            sessionStorage.setItem(key, encoded);
+            localStorage.setItem(key, encoded); // ✅ Cambiado a localStorage
             return true;
         }
         return false;
@@ -59,18 +60,18 @@ export const SecureStorage = {
     
     // Obtener datos decodificados
     getItem: (key) => {
-        const encoded = sessionStorage.getItem(key);
+        const encoded = localStorage.getItem(key); // ✅ Cambiado a localStorage
         return encoded ? decodeData(encoded) : null;
     },
     
     // Eliminar dato
     removeItem: (key) => {
-        sessionStorage.removeItem(key);
+        localStorage.removeItem(key); // ✅ Cambiado a localStorage
     },
     
     // Limpiar todo
     clear: () => {
-        sessionStorage.clear();
+        localStorage.clear(); // ✅ Cambiado a localStorage
     }
 };
 
@@ -79,12 +80,12 @@ export const SecureStorage = {
 // ============================================
 
 export const SessionManager = {
-    // Guardar usuario en sesion
+    // Guardar usuario en sesion (localStorage - persiste al cerrar navegador)
     saveUser: (userData) => {
         return SecureStorage.setItem(STORAGE_KEY, {
             user: userData,
             timestamp: Date.now(),
-            expiresIn: 1800000 // 30min
+            expiresIn: 86400000 // 24 horas (en milisegundos)
         });
     },
     

@@ -1,0 +1,475 @@
+/**
+ * ZKP GENERATOR - Generación de pruebas Zero-Knowledge usando Polygon ID SDK
+ * 
+ * Flujo:
+ * 1. Usuario tiene credencial del Issuer Node
+ * 2. Frontend genera prueba ZKP
+ * 3. Backend verifica la prueba
+ * 
+ * Nota: Esta es una implementación simplificada que usa el backend
+ * para la generación real de pruebas via Issuer Node API
+ */
+
+// Importaciones del SDK de Polygon ID
+import {
+    IdentityWallet,
+    CredentialWallet,
+    KMS,
+    BjjProvider,
+    KmsKeyType,
+    CredentialStorage,
+    IdentityStorage,
+    ProofService,
+    CircuitStorage,
+    EthStateStorage,
+    InMemoryDataSource,
+    InMemoryPrivateKeyStore,
+    core,
+    CredentialStatusType,
+    W3CCredential
+} from '@0xpolygonid/js-sdk';
+import { CircuitId } from '@0xpolygonid/js-sdk';
+
+// Estado global del SDK
+let sdkInitialized = false;
+let identityWallet = null;
+let credentialWallet = null;
+let proofService = null;
+let dataStorage = null;
+let userIdentity = null;
+
+/**
+ * Configuración de Polygon ID para producción
+ */
+const POLYGON_CONFIG = {
+    rpcUrl: 'https://rpc-amoy.polygon.technology/',
+    stateContractAddress: '0x134B1BE34911E39A8397ec6289782989729807a4',
+    chainId: 80002,
+    network: 'polygon-amoy',
+    blockchain: 'polygon',
+    networkFlag: 0x00, // Amoy
+    method: 'polygonid'
+};
+
+/**
+ * Inicializa el SDK de Polygon ID para producción
+ */
+async function initializeSDK() {
+    if (sdkInitialized && identityWallet && credentialWallet && proofService) {
+        return { identityWallet, credentialWallet, proofService, userIdentity };
+    }
+
+    try {
+        console.log('🔧 Inicializando Polygon ID SDK para producción...');
+
+        // Data Storage en memoria (en producción usar IndexedDB)
+        dataStorage = {
+            credential: new InMemoryDataSource(),
+            identity: new InMemoryDataSource(),
+            mt: new InMemoryDataSource(),
+            states: new InMemoryDataSource()
+        };
+
+        // Private key store
+        const privateKeyStore = new InMemoryPrivateKeyStore();
+
+        // Credential Storage
+        const credentialStorage = new CredentialStorage(
+            dataStorage.credential,
+            dataStorage.credential
+        );
+
+        // Identity Storage
+        const identityStorage = new IdentityStorage(
+            dataStorage.identity,
+            dataStorage.identity,
+            dataStorage.identity
+        );
+
+        // Key Management System
+        const kms = new KMS();
+        const bjjProvider = new BjjProvider(KmsKeyType.BabyJubJub, privateKeyStore);
+        kms.registerKeyProvider(KmsKeyType.BabyJubJub, bjjProvider);
+
+        // Identity Wallet
+        identityWallet = new IdentityWallet(kms, dataStorage.identity, credentialStorage);
+
+        // Credential Wallet  
+        credentialWallet = new CredentialWallet(dataStorage.identity, credentialStorage);
+
+        // Circuit Storage
+        const circuitStorage = new CircuitStorage(new InMemoryDataSource());
+
+        // State Storage (on-chain verification)
+        const stateStorage = new EthStateStorage(POLYGON_CONFIG);
+
+        // Proof Service
+        proofService = new ProofService(
+            identityWallet,
+            credentialWallet,
+            circuitStorage,
+            stateStorage,
+            { 
+                ipfsNodeURL: 'https://ipfs.io'
+            }
+        );
+
+        // Crear o recuperar identidad del usuario
+        const identities = await identityWallet.getIdentities();
+        
+        if (identities.length === 0) {
+            console.log('🆔 Creando nueva identidad...');
+            const { did, credential } = await identityWallet.createIdentity({
+                method: POLYGON_CONFIG.method,
+                blockchain: POLYGON_CONFIG.blockchain,
+                networkId: POLYGON_CONFIG.network,
+                seed: generateRandomSeed(),
+                revocationOpts: {
+                    type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+                    id: 'https://rhs.polygonid.me'
+                }
+            });
+            
+            userIdentity = { did: did.string(), credential };
+            console.log('✅ Identidad creada:', userIdentity.did);
+        } else {
+            userIdentity = identities[0];
+            console.log('✅ Identidad recuperada:', userIdentity.did);
+        }
+
+        sdkInitialized = true;
+        console.log('✅ SDK inicializado para producción');
+
+        return { identityWallet, credentialWallet, proofService, userIdentity };
+    } catch (error) {
+        console.error('❌ Error inicializando SDK:', error);
+        return { identityWallet: null, credentialWallet: null, proofService: null, userIdentity: null };
+    }
+}
+
+/**
+ * Genera seed aleatorio para crear identidad
+ */
+function generateRandomSeed() {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return array;
+}
+
+/**
+ * Genera una prueba ZKP usando el SDK de Polygon ID (Producción)
+ */
+export async function generateVerificationProof(credential, issuerDID, proofType, extraParams = {}) {
+    try {
+        console.log('🔐 Generando prueba ZKP con Polygon ID SDK (Producción)...');
+
+        // Inicializar SDK
+        const sdk = await initializeSDK();
+
+        if (!sdk.proofService || !sdk.userIdentity) {
+            throw new Error('SDK no inicializado correctamente');
+        }
+
+        const { proofService, credentialWallet, userIdentity } = sdk;
+
+        console.log('📝 Usuario DID:', userIdentity.did);
+        console.log('📝 Issuer DID:', issuerDID);
+
+        // Convertir credencial a W3C
+        const w3cCred = convertToW3CCredential(credential, issuerDID);
+        
+        // Guardar credencial en el wallet
+        console.log('💾 Guardando credencial en wallet...');
+        await credentialWallet.save(w3cCred);
+
+        // Crear query según tipo de prueba
+        const query = createQueryForProofType(proofType, extraParams);
+
+        // Crear proof request
+        const proofRequest = {
+            id: 1,
+            circuitId: CircuitId.AtomicQueryMTPV2,
+            optional: false,
+            query: {
+                allowedIssuers: ['*'],
+                type: 'ZKPAuthCredential',
+                context: 'ipfs://QmXAHpXSPcj2J7wreCkKkvvXgT67tbQDvFxmTHudXQYBEp',
+                credentialSubject: query
+            }
+        };
+
+        console.log('� Generando proof ZKP...');
+        console.log('Query:', JSON.stringify(query, null, 2));
+
+        // Parsear DID del usuario
+        const userDIDParsed = core.DID.parse(userIdentity.did);
+
+        // Generar proof usando ProofService
+        const zkpResponse = await proofService.generateProof(
+            proofRequest,
+            userDIDParsed
+        );
+
+        console.log('✅ Proof ZKP generado exitosamente');
+
+        return {
+            id: `proof-${Date.now()}`,
+            type: 'ZKProof',
+            proofType: proofType,
+            circuitId: CircuitId.AtomicQueryMTPV2,
+            proof: zkpResponse.proof,
+            pub_signals: zkpResponse.pub_signals,
+            metadata: {
+                credentialId: credential.id,
+                issuerDID: issuerDID,
+                userDID: userIdentity.did,
+                proofType: proofType,
+                ...extraParams,
+                generatedAt: new Date().toISOString()
+            }
+        };
+
+    } catch (error) {
+        console.error('❌ Error generando proof:', error);
+        throw new Error(`No se pudo generar proof: ${error.message}`);
+    }
+}
+
+/**
+ * Convierte credencial al formato W3C
+ */
+function convertToW3CCredential(credential, issuerDID) {
+    if (credential['@context']) {
+        return credential;
+    }
+
+    return {
+        '@context': [
+            'https://www.w3.org/2018/credentials/v1',
+            'ipfs://QmXAHpXSPcj2J7wreCkKkvvXgT67tbQDvFxmTHudXQYBEp'
+        ],
+        id: credential.id || `credential-${Date.now()}`,
+        type: ['VerifiableCredential', 'ZKPAuthCredential'],
+        issuer: issuerDID,
+        issuanceDate: credential.issuanceDate || new Date().toISOString(),
+        credentialSubject: {
+            ...credential.credentialSubject,
+            type: 'ZKPAuthCredential'
+        },
+        credentialStatus: {
+            id: 'https://rhs.polygonid.me',
+            type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+            revocationNonce: Date.now()
+        }
+    };
+}
+
+/**
+ * Crea query según tipo de prueba
+ */
+function createQueryForProofType(proofType, extraParams) {
+    switch (proofType) {
+        case 'verification':
+            return {
+                isVerified: {
+                    $eq: 1
+                }
+            };
+        
+        case 'authMethod':
+            return {
+                authMethod: {
+                    $eq: extraParams.authMethod || 'wallet'
+                }
+            };
+        
+        case 'accountState':
+            return {
+                accountState: {
+                    $eq: 'active'
+                }
+            };
+        
+        default:
+            return {
+                isVerified: {
+                    $eq: 1
+                }
+            };
+    }
+}
+
+/**
+ * Funciones específicas por tipo de prueba
+ */
+export async function generateAuthMethodProof(credential, issuerDID, authMethod = 'wallet') {
+    return generateVerificationProof(credential, issuerDID, 'authMethod', { authMethod });
+}
+
+export async function generateIsVerifiedProof(credential, issuerDID) {
+    return generateVerificationProof(credential, issuerDID, 'verification');
+}
+
+export async function generateAccountStateProof(credential, issuerDID, state = 'active') {
+    return generateVerificationProof(credential, issuerDID, 'accountState', { state });
+}
+
+/**
+ * Genera un proof simulado (fallback)
+ */
+function generateSimulatedProof(credential, issuerDID, proofType, extraParams) {
+    return {
+        id: `proof-simulated-${Date.now()}`,
+        type: 'ZKProof',
+        proofType: proofType,
+        circuitId: 'credentialAtomicQueryMTPV2',
+        simulated: true,
+        pub_signals: [
+            issuerDID,
+            credential.credentialSubject?.id || issuerDID,
+            Math.floor(Date.now() / 1000).toString(),
+            proofType
+        ],
+        proof: {
+            pi_a: [
+                '12345678901234567890123456789012',
+                '98765432109876543210987654321098',
+                '1'
+            ],
+            pi_b: [
+                ['11111111111111111111111111111111', '22222222222222222222222222222222'],
+                ['33333333333333333333333333333333', '44444444444444444444444444444444'],
+                ['1', '0']
+            ],
+            pi_c: [
+                '55555555555555555555555555555555',
+                '66666666666666666666666666666666',
+                '1'
+            ]
+        },
+        metadata: {
+            credentialId: credential.id,
+            issuerDID: issuerDID,
+            userDID: credential.credentialSubject?.id,
+            proofType: proofType,
+            ...extraParams,
+            generatedAt: new Date().toISOString()
+        }
+    };
+}
+
+/**
+ * Envía el proof al backend para verificación
+ */
+export async function sendProofToBackend(proof) {
+    try {
+        console.log('📤 Enviando proof para verificación...');
+
+        const response = await fetch('http://localhost:5000/verify-proof', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                proof: proof.proof,
+                pub_signals: proof.pub_signals,
+                circuitId: proof.circuitId
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Error verificando prueba');
+        }
+
+        console.log('✅ Verificación completada');
+        return data;
+    } catch (error) {
+        console.error('❌ Error enviando proof:', error);
+        throw error;
+    }
+}
+ */
+        throw error;
+    }
+}
+
+/**
+ * Enviar prueba ZKP al backend para verificación
+ * @param {Object} proof - Prueba ZKP generada
+ * @param {string} backendUrl - URL del backend
+ * @returns {Promise<Object>} - Resultado de la verificación
+ */
+/**
+ * Envía el proof al backend para verificación
+ */
+export async function sendProofToBackend(proof) {
+    try {
+        console.log('Enviando proof para verificación...');
+
+        const response = await fetch('http://localhost:5000/verify-proof', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                proof: proof.proof,
+                pub_signals: proof.pub_signals,
+                circuitId: proof.circuitId
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Error verificando prueba');
+        }
+
+        console.log('✅ Verificación completada');
+        return data;
+    } catch (error) {
+        console.error('❌ Error enviando proof:', error);
+        throw error;
+    }
+}
+}
+
+/**
+ * Flujo completo: Generar y verificar prueba
+ * @param {Object} credential - Credencial del usuario
+ * @param {string} issuerDID - DID del emisor
+ * @param {Object} query - Query para la prueba
+ * @returns {Promise<boolean>} - true si la prueba es válida
+ */
+export async function generateAndVerifyProof(credential, issuerDID, query) {
+    try {
+        // 1. Preparar credencial
+        const preparedCred = prepareCredentialForSDK(credential);
+
+        // 2. Generar prueba
+        const proof = await generateVerificationProof(preparedCred, issuerDID, query);
+
+        // 3. Enviar al backend para verificación
+        const result = await sendProofToBackend(proof);
+
+        return result.verified === true;
+
+    } catch (error) {
+        console.error('[ZKP] Error en flujo completo:', error);
+        return false;
+    }
+}
+
+// Exportar todas las funciones
+export default {
+    generateVerificationProof,
+    generateAuthMethodProof,
+    generateIsVerifiedProof,
+    generateAccountStateProof,
+    generateAccountAgeProof,
+    generateCombinedProof,
+    prepareCredentialForSDK,
+    sendProofToBackend,
+    generateAndVerifyProof
+};

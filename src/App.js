@@ -5,6 +5,7 @@ import './login.css';
 import { registerUser, loginUser, logoutUser, getCurrentUser } from './components/athenticacion';
 import { connectWallet, authenticateWithWallet } from './components/logicadewallet';
 import { formatDIDShort, getDIDDisplayInfo } from './components/bidi';
+import JsonViewer from './components/json-viewer';
 
 function App() {
   const [currentView, setCurrentView] = useState('login');
@@ -338,62 +339,79 @@ function PaginaSession({ user, onLogout }) {
     setProofResult(null);
 
     try {
-      console.log('[App] Generando prueba ZKP tipo:', proofType);
+      console.log('[App] Iniciando verificación ZKP...');
+      console.log('[App] Usuario completo:', JSON.stringify(user, null, 2));
+      
+      if (!user.credential) {
+        throw new Error('No tienes credencial disponible. Por favor, registrate o inicia sesión.');
+      }
+
+      console.log('[App] Credencial recibida:', JSON.stringify(user.credential, null, 2));
+      console.log('[App] Tiene credentialSubject?', !!user.credential.credentialSubject);
+      console.log('[App] Tiene issuer?', !!user.credential.issuer);
+      console.log('[App] Tiene id?', !!user.credential.id);
+
+      if (!user.credential.credentialSubject) {
+        console.error('[App] CREDENCIAL INCOMPLETA:', user.credential);
+        throw new Error('La credencial no tiene credentialSubject. Esto significa que el backend no devolvió la credencial completa. Verifica los logs del backend.');
+      }
 
       // Importar el generador ZKP
       const zkpGen = await import('./components/zkp-generator');
 
-      if (!user.credential) {
-        throw new Error('No tienes credencial disponible');
+      // Obtener el issuer DID
+      const issuerDID = user.credential.issuer || user.zkpData?.identifier || user.did;
+      console.log('[App] 📝 Issuer DID:', issuerDID);
+
+            // Generar prueba de verificación
+      const result = await zkpGen.generateIsVerifiedProof(user.credential, issuerDID);
+
+      console.log('[App] ✅ Verificación completada:', result);
+
+      // Manejar tanto éxitos como errores del backend
+      if (result.success === false || !result.verified) {
+        // Verificación falló
+        setProofResult({
+          success: false,
+          verified: false,
+          error: result.error || result.message,
+          stage: result.stage
+        });
+        alert(`❌ Verificación fallida:\n${result.error || result.message}`);
+      } else {
+        // Verificación exitosa - GUARDAR TODOS LOS DATOS
+        console.log('[App] 📊 RESULTADO COMPLETO:', result);
+        console.log('[App] 📊 fullData recibido?', !!result.fullData);
+        console.log('[App] 📊 fullData contenido:', result.fullData);
+        
+        setProofResult({
+          success: true,
+          verified: result.verified,
+          proof: result.proof,
+          fullData: result.fullData, // ← NUEVO: Datos completos para JSON viewer
+          message: result.message,
+          warning: result.warning,
+          localVerification: result.localVerification
+        });
+
+        // Mensaje detallado según el tipo de verificación
+        const verificationMethod = result.proof?.method === 'issuer-node' 
+          ? 'verificada con Issuer Node (on-chain) 🔗' 
+          : 'verificada localmente (estructura) 📝';
+        
+        const warningMsg = result.warning ? `\n\n⚠️ ${result.warning}` : '';
+        alert(`✅ Identidad ${verificationMethod}\n\n${result.message}${warningMsg}`);
       }
-
-      // Obtener el issuer DID (del estado o usar uno por defecto)
-      const issuerDID = user.zkpData?.identifier || user.did;
-
-      let proof;
-      
-      switch (proofType) {
-        case 'authMethod':
-          proof = await zkpGen.generateAuthMethodProof(
-            user.credential,
-            issuerDID,
-            user.credential.credentialSubject?.authMethod || 'email'
-          );
-          break;
-        
-        case 'verified':
-          proof = await zkpGen.generateIsVerifiedProof(user.credential, issuerDID);
-          break;
-        
-        case 'accountState':
-          proof = await zkpGen.generateAccountStateProof(user.credential, issuerDID, 'active');
-          break;
-        
-        default:
-          throw new Error('Tipo de prueba no soportado');
-      }
-
-      console.log('[App] ✅ Prueba generada:', proof);
-
-      // Enviar al backend para verificación
-      const verificationResult = await zkpGen.sendProofToBackend(proof);
-
-      setProofResult({
-        success: true,
-        verified: verificationResult.verified,
-        proof: proof,
-        message: verificationResult.message
-      });
-
-      alert(`✅ Prueba generada y verificada: ${verificationResult.verified ? 'VÁLIDA' : 'INVÁLIDA'}`);
 
     } catch (error) {
-      console.error('[App] ❌ Error generando prueba:', error);
+      console.error('[App] Error inesperado:', error);
+      console.error('[App] Stack:', error.stack);
       setProofResult({
         success: false,
-        error: error.message
+        verified: false,
+        error: error.message || 'Error inesperado en la verificación'
       });
-      alert(`❌ Error: ${error.message}`);
+      alert(`Error inesperado: ${error.message}`);
     } finally {
       setGeneratingProof(false);
     }
@@ -422,7 +440,7 @@ function PaginaSession({ user, onLogout }) {
         {/* Desplegador para DID */}
         {user.did && (
           <JSONCollapsible 
-            title="🆔 Identidad Descentralizada (DID)" 
+            title="Identidad Descentralizada (DID)" 
             data={didData}
             defaultExpanded={true}
           />
@@ -431,7 +449,7 @@ function PaginaSession({ user, onLogout }) {
         {/* Desplegador para Verifiable Credential */}
         {user.credential && (
           <JSONCollapsible 
-            title="📜 Credencial Verificable (VC)" 
+            title="Credencial Verificable (VC)" 
             data={vcData}
             defaultExpanded={false}
           />
@@ -439,7 +457,7 @@ function PaginaSession({ user, onLogout }) {
 
         {/* Desplegador para ZKP State */}
         <JSONCollapsible 
-          title="🔐 Estado ZKP (Claims Tree)" 
+          title="Estado ZKP (Claims Tree)" 
           data={zkpProofsData}
           defaultExpanded={false}
         />
@@ -472,51 +490,113 @@ function PaginaSession({ user, onLogout }) {
           </div>
         )}
 
-        {/* Botones para generar pruebas ZKP */}
+        {/* Botón ÚNICO para verificar credencial desde wallet */}
         {user.credential && (
           <div className="zkp-info">
-            <h3>🔐 Generar Pruebas ZKP</h3>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '15px' }}>
-              <button 
-                onClick={() => handleGenerateProof('authMethod')}
-                disabled={generatingProof}
-                className="btn-primary"
-                style={{ flex: '1', minWidth: '150px' }}
-              >
-                {generatingProof ? 'Generando...' : 'Probar Método Auth'}
-              </button>
-              
-              <button 
-                onClick={() => handleGenerateProof('accountState')}
-                disabled={generatingProof}
-                className="btn-primary"
-                style={{ flex: '1', minWidth: '150px' }}
-              >
-                {generatingProof ? 'Generando...' : 'Probar Estado Activo'}
-              </button>
-              
-              <button 
-                onClick={() => handleGenerateProof('verified')}
-                disabled={generatingProof}
-                className="btn-primary"
-                style={{ flex: '1', minWidth: '150px' }}
-              >
-                {generatingProof ? 'Generando...' : 'Probar Verificado'}
-              </button>
-            </div>
+            <h3>🔐 Verificar Credencial ZKP</h3>
+            <p style={{ fontSize: '14px', color: '#666', marginBottom: '15px' }}>
+              Genera una prueba de conocimiento cero para verificar tu identidad sin revelar datos personales
+            </p>
+            <button 
+              onClick={() => handleGenerateProof('verification')}
+              disabled={generatingProof}
+              className="btn-primary"
+              style={{ width: '100%', padding: '15px', fontSize: '16px' }}
+            >
+              {generatingProof ? ' Generando prueba ZKP...' : '🔐 Verificar Identidad con ZKP'}
+            </button>
             
             {proofResult && (
               <div style={{
                 marginTop: '15px',
-                padding: '15px',
+                padding: '20px',
                 background: proofResult.success ? '#d4edda' : '#f8d7da',
                 border: `1px solid ${proofResult.success ? '#c3e6cb' : '#f5c6cb'}`,
-                borderRadius: '5px'
+                borderRadius: '8px'
               }}>
                 {proofResult.success ? (
                   <>
-                    <p><strong>✅ Resultado:</strong> {proofResult.message}</p>
-                    <p><strong>Verificado:</strong> {proofResult.verified ? 'SÍ ✓' : 'NO ✗'}</p>
+                    <p style={{ marginBottom: '10px', fontSize: '16px', fontWeight: 'bold' }}>
+                      ✅ Resultado: {proofResult.message}
+                    </p>
+                    <p style={{ marginBottom: '8px' }}>
+                      <strong>Verificado:</strong> {proofResult.verified ? 'SÍ ✓' : 'NO ✗'}
+                    </p>
+                    {proofResult.proof && (
+                      <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255,255,255,0.5)', borderRadius: '5px', fontSize: '13px' }}>
+                        <p><strong>📋 Detalles de Verificación:</strong></p>
+                        {proofResult.proof.method && (
+                          <p>• Método: {proofResult.proof.method === 'issuer-node' ? 'Issuer Node (on-chain)' : 'Local'}</p>
+                        )}
+                        {proofResult.proof.credentialId && (
+                          <p>• ID Credencial: {proofResult.proof.credentialId.substring(0, 20)}...</p>
+                        )}
+                        {proofResult.proof.subject && (
+                          <p>• Subject: {proofResult.proof.subject.substring(0, 30)}...</p>
+                        )}
+                        {proofResult.proof.notRevoked !== undefined && (
+                          <p>• No revocada: {proofResult.proof.notRevoked ? '✓' : '✗'}</p>
+                        )}
+                        {proofResult.proof.timestamp && (
+                          <p>• Verificado: {new Date(proofResult.proof.timestamp).toLocaleString()}</p>
+                        )}
+                        
+                        {/* Mostrar información del ZKP Proof si está disponible */}
+                        {proofResult.proof.zkpProof && proofResult.proof.zkpProof.proofs && proofResult.proof.zkpProof.proofs.length > 0 && (
+                          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ccc' }}>
+                            <p><strong>🔐 Prueba Criptográfica ZKP:</strong></p>
+                            {proofResult.proof.zkpProof.proofs.map((proof, idx) => (
+                              <div key={idx} style={{ marginLeft: '10px', marginTop: '8px' }}>
+                                <p>• <strong>Tipo:</strong> {proof.type}</p>
+                                {proof.signature && (
+                                  <p>• <strong>Firma BJJ:</strong> {proof.signature}</p>
+                                )}
+                                {proof.coreClaim && (
+                                  <p>• <strong>Core Claim:</strong> {proof.coreClaim}</p>
+                                )}
+                                {proof.issuerData && (
+                                  <>
+                                    <p>• <strong>Issuer ID:</strong> {proof.issuerData.id?.substring(0, 25)}...</p>
+                                    {proof.issuerData.state?.claimsTreeRoot && (
+                                      <p>• <strong>Claims Tree Root:</strong> {proof.issuerData.state.claimsTreeRoot.substring(0, 20)}...</p>
+                                    )}
+                                    {proof.issuerData.mtp && (
+                                      <p>• <strong>MTP:</strong> Existence: {proof.issuerData.mtp.existence ? '✓' : '✗'}, Siblings: {proof.issuerData.mtp.siblingsCount}</p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* JSON VIEWER - Mostrar datos completos */}
+                    {proofResult.fullData && (
+                      <div style={{ marginTop: '20px' }}>
+                        <JsonViewer 
+                          data={proofResult.fullData} 
+                          title="📊 Datos Completos de Verificación (JSON)"
+                        />
+                      </div>
+                    )}
+                    
+                    {/* DEBUG: Mostrar si fullData NO está disponible */}
+                    {!proofResult.fullData && (
+                      <div style={{ marginTop: '15px', padding: '10px', background: '#fff3cd', borderRadius: '5px' }}>
+                        <p style={{ margin: 0, fontSize: '12px', color: '#856404' }}>
+                          ⚠️ DEBUG: No hay fullData disponible. 
+                          Verifica que el backend esté devolviendo el campo 'fullData'.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {proofResult.warning && (
+                      <p style={{ marginTop: '10px', color: '#856404', fontSize: '12px' }}>
+                        ⚠️ {proofResult.warning}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p><strong>❌ Error:</strong> {proofResult.error}</p>
@@ -531,7 +611,7 @@ function PaginaSession({ user, onLogout }) {
             <h3>🔐 Pruebas ZKP</h3>
             <p>Genera pruebas de conocimiento cero para verificar atributos sin revelar datos</p>
             {user.did && (
-              <small className="status-ok">✅ DID disponible - Listo para generar pruebas</small>
+              <small className="status-ok"> DID disponible - Listo para generar pruebas</small>
             )}
           </div>
         </div>

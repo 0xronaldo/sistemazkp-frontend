@@ -32,6 +32,16 @@ export const registerUser = async (name, email, password) => {
             userName: user.name,
             hasCredential: !!credential
         });
+        
+        console.log('[Auth] 📄 CREDENCIAL COMPLETA recibida:', JSON.stringify(credential, null, 2));
+        
+        // Validar que la credencial tenga los campos necesarios
+        if (credential && !credential.credentialSubject) {
+            console.warn('[Auth] ⚠️ ADVERTENCIA: Credencial incompleta - falta credentialSubject');
+        }
+        if (credential && !credential.issuer) {
+            console.warn('[Auth] ⚠️ ADVERTENCIA: Credencial incompleta - falta issuer');
+        }
 
         // Preparar datos del usuario
         const userData = {
@@ -44,8 +54,14 @@ export const registerUser = async (name, email, password) => {
             timestamp: Date.now()
         };
         
-        // Guardar en sesion segura (Base64 + sessionStorage)
-        SessionManager.saveUser(userData);
+        // Guardar en localStorage (persiste al cerrar navegador - 24h)
+        const saved = SessionManager.saveUser(userData);
+        console.log('[Auth] ✅ Usuario guardado en localStorage:', saved);
+        console.log('[Auth] 📦 Datos almacenados:', {
+            email: user.email,
+            did: did,
+            hasCredential: !!credential
+        });
         
         return userData;
     } catch (error) {
@@ -74,8 +90,12 @@ export const loginUser = async (email, password) => {
         
         console.log('[Auth] Login exitoso:', {
             userName: user?.name,
-            hasDID: !!did
+            hasDID: !!did,
+            hasCredential: !!credential
         });
+        
+        console.log('[Auth] 📄 DID recuperado:', did);
+        console.log('[Auth] 📄 Credencial recuperada:', JSON.stringify(credential, null, 2));
 
         const userData = {
             ...user,
@@ -87,8 +107,9 @@ export const loginUser = async (email, password) => {
             timestamp: Date.now()
         };
         
-        // Guardar en sesion segura
-        SessionManager.saveUser(userData);
+        // Guardar en sesion segura (localStorage - persiste 24h)
+        const saved = SessionManager.saveUser(userData);
+        console.log('[Auth] ✅ Datos guardados en localStorage:', saved);
         
         return userData;
     } catch (error) {
