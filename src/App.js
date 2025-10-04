@@ -16,7 +16,7 @@ function App() {
     const savedUser = getCurrentUser();
     if (savedUser) {
       setUser(savedUser);
-      setCurrentView('dashboard');
+      setCurrentView('pagina_session');
     }
   }, []);
 
@@ -27,7 +27,7 @@ function App() {
       console.log('[App] Iniciando login...');
       const userData = await loginUser(email, password);
       setUser(userData);
-      setCurrentView('dashboard');
+      setCurrentView('pagina_session');
       alert('Login exitoso');
     } catch (error) {
       console.error('[App] Error en login:', error);
@@ -44,7 +44,7 @@ function App() {
       console.log('[App] Iniciando registro...');
       const userData = await registerUser(name, email, password);
       setUser(userData);
-      setCurrentView('dashboard');
+      setCurrentView('pagina_session');
       
       if (userData.did) {
         alert(`Cuenta creada exitosamente! Tu DID: ${formatDIDShort(userData.did)}`);
@@ -64,10 +64,15 @@ function App() {
     setLoading(true);
     try {
       console.log('[App] Conectando wallet...');
-      const walletAddress = await connectWallet();
-      const userData = await authenticateWithWallet(walletAddress);
+      
+      // Importar función de firma
+      const { connectAndAuthenticate } = await import('./components/logicadewallet');
+      
+      // Conectar, firmar y autenticar en un solo paso
+      const userData = await connectAndAuthenticate(true); // true = requiere firma
+      
       setUser(userData);
-      setCurrentView('dashboard');
+      setCurrentView('pagina_session');
       
       if (userData.did) {
         alert(`Wallet conectada! Tu DID: ${formatDIDShort(userData.did)}`);
@@ -115,8 +120,8 @@ function App() {
         />
       )}
       
-      {currentView === 'dashboard' && user && (
-        <DashboardScreen 
+      {currentView === 'pagina_session' && user && (
+        <PaginaSession 
           user={user}
           onLogout={handleLogout}
         />
@@ -253,19 +258,156 @@ function RegisterScreen({ onRegister, onShowLogin, loading }) {
   );
 }
 
-// Componente del Dashboard
-function DashboardScreen({ user, onLogout }) {
-  const didInfo = user.did ? getDIDDisplayInfo(user.did) : null;
+// Componente de desplegador JSON simple
+function JSONCollapsible({ title, data, defaultExpanded = false }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   return (
-    <div className="dashboard">
-      <div className="dashboard-header">
+    <div style={{ marginBottom: '20px', border: '1px solid #ddd', borderRadius: '5px' }}>
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          padding: '15px',
+          background: '#f5f5f5',
+          cursor: 'pointer',
+          userSelect: 'none',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <span><strong>{isExpanded ? '▼' : '▶'} {title}</strong></span>
+        <span style={{ fontSize: '12px', color: '#666' }}>
+          {isExpanded ? 'Ocultar' : 'Ver'}
+        </span>
+      </div>
+      {isExpanded && (
+        <div style={{ padding: '15px', background: '#fff' }}>
+          <pre style={{
+            background: '#f8f8f8',
+            padding: '15px',
+            borderRadius: '3px',
+            overflow: 'auto',
+            fontSize: '13px',
+            margin: 0
+          }}>
+            {JSON.stringify(data, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Componente de Pagina de Session
+function PaginaSession({ user, onLogout }) {
+  const [generatingProof, setGeneratingProof] = useState(false);
+  const [proofResult, setProofResult] = useState(null);
+  
+  const didInfo = user.did ? getDIDDisplayInfo(user.did) : null;
+
+  // Preparar datos para DID (datos reales del backend)
+  const didData = {
+    did: user.did,
+    info: didInfo,
+    createdAt: user.timestamp || user.createdAt
+  };
+
+  // Preparar datos para VC (Verifiable Credential) - datos reales del backend
+  const vcData = {
+    credential: user.credential,
+    zkpData: user.zkpData,
+    type: user.type,
+    user: {
+      name: user.name,
+      email: user.email,
+      walletAddress: user.walletAddress,
+      state: user.state
+    }
+  };
+
+  // Preparar datos para ZKP - datos reales del backend
+  const zkpProofsData = user.zkpData || {
+    identifier: user.did,
+    state: 'No disponible'
+  };
+
+  // Handler para generar prueba ZKP
+  const handleGenerateProof = async (proofType) => {
+    setGeneratingProof(true);
+    setProofResult(null);
+
+    try {
+      console.log('[App] Generando prueba ZKP tipo:', proofType);
+
+      // Importar el generador ZKP
+      const zkpGen = await import('./components/zkp-generator');
+
+      if (!user.credential) {
+        throw new Error('No tienes credencial disponible');
+      }
+
+      // Obtener el issuer DID (del estado o usar uno por defecto)
+      const issuerDID = user.zkpData?.identifier || user.did;
+
+      let proof;
+      
+      switch (proofType) {
+        case 'authMethod':
+          proof = await zkpGen.generateAuthMethodProof(
+            user.credential,
+            issuerDID,
+            user.credential.credentialSubject?.authMethod || 'email'
+          );
+          break;
+        
+        case 'verified':
+          proof = await zkpGen.generateIsVerifiedProof(user.credential, issuerDID);
+          break;
+        
+        case 'accountState':
+          proof = await zkpGen.generateAccountStateProof(user.credential, issuerDID, 'active');
+          break;
+        
+        default:
+          throw new Error('Tipo de prueba no soportado');
+      }
+
+      console.log('[App] ✅ Prueba generada:', proof);
+
+      // Enviar al backend para verificación
+      const verificationResult = await zkpGen.sendProofToBackend(proof);
+
+      setProofResult({
+        success: true,
+        verified: verificationResult.verified,
+        proof: proof,
+        message: verificationResult.message
+      });
+
+      alert(`✅ Prueba generada y verificada: ${verificationResult.verified ? 'VÁLIDA' : 'INVÁLIDA'}`);
+
+    } catch (error) {
+      console.error('[App] ❌ Error generando prueba:', error);
+      setProofResult({
+        success: false,
+        error: error.message
+      });
+      alert(`❌ Error: ${error.message}`);
+    } finally {
+      setGeneratingProof(false);
+    }
+  };
+
+  return (
+    <div className="pagina-session">
+      <div className="pagina-session-header">
         <h1>Sistema ZKP</h1>
         <div className="user-info">
           {user.walletAddress ? (
             <span>Wallet: {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}</span>
           ) : (
-            <span>Hola, {user.name}</span>
+            <span>Usuario: {user.name}</span>
           )}
           <button onClick={onLogout} className="btn-logout">
             Salir
@@ -273,71 +415,124 @@ function DashboardScreen({ user, onLogout }) {
         </div>
       </div>
       
-      <div className="dashboard-content">
-        <h2>Bienvenido</h2>
-        <p>Has iniciado sesion correctamente</p>
+      <div className="pagina-session-content">
+        <h2>Sistema de Pruebas de Conocimiento Cero</h2>
+        <p>Sesión iniciada como {user.walletAddress ? 'wallet' : 'usuario'}: {user.walletAddress ? user.walletAddress : user.name}</p>
         
-        {didInfo && didInfo.valid && (
-          <div className="zkp-info">
-            <h3>Tu Identidad Descentralizada (DID)</h3>
-            <div className="info-box">
-              <p><strong>DID Completo:</strong></p>
-              <code className="did-full">{didInfo.full}</code>
-            </div>
-            <div className="info-box">
-              <p><strong>Metodo:</strong> {didInfo.method}</p>
-              <p><strong>Red:</strong> {didInfo.network}</p>
-              <p><strong>Identificador:</strong> {didInfo.identifier.slice(0, 20)}...</p>
-            </div>
-          </div>
+        {/* Desplegador para DID */}
+        {user.did && (
+          <JSONCollapsible 
+            title="🆔 Identidad Descentralizada (DID)" 
+            data={didData}
+            defaultExpanded={true}
+          />
         )}
 
-        {user.zkpData && (
+        {/* Desplegador para Verifiable Credential */}
+        {user.credential && (
+          <JSONCollapsible 
+            title="📜 Credencial Verificable (VC)" 
+            data={vcData}
+            defaultExpanded={false}
+          />
+        )}
+
+        {/* Desplegador para ZKP State */}
+        <JSONCollapsible 
+          title="🔐 Estado ZKP (Claims Tree)" 
+          data={zkpProofsData}
+          defaultExpanded={false}
+        />
+
+        {/* Resumen visual */}
+        {didInfo && didInfo.valid && (
           <div className="zkp-info">
-            <h3>Datos ZKP</h3>
+            <h3>Resumen de tu Identidad</h3>
             <div className="info-box">
-              <p><strong>Estado:</strong> {user.zkpData.state || 'Activo'}</p>
-              <p><strong>Tipo:</strong> {user.type}</p>
-              {user.zkpData.timestamp && (
-                <p><strong>Creado:</strong> {new Date(user.zkpData.timestamp).toLocaleString()}</p>
-              )}
+              <p><strong>DID:</strong> <code>{didInfo.full}</code></p>
+              <p><strong>Método:</strong> {didInfo.method}</p>
+              <p><strong>Red:</strong> {didInfo.network}</p>
             </div>
           </div>
         )}
 
         {user.credential && (
           <div className="zkp-info">
-            <h3>Credencial Verificable</h3>
+            <h3>Estado de Credencial</h3>
             <div className="info-box">
-              <p><strong>Tipos:</strong></p>
-              <ul>
-                {user.credential.type?.map((type, idx) => (
-                  <li key={idx}>{type}</li>
-                ))}
-              </ul>
+              <p><strong>Tipos:</strong> {user.credential.type?.join(', ')}</p>
               {user.credential.credentialSubject && (
-                <div>
-                  <p><strong>Datos del Sujeto:</strong></p>
-                  <p>Metodo de Auth: {user.credential.credentialSubject.authMethod}</p>
-                  <p>Estado: {user.credential.credentialSubject.accountState}</p>
-                </div>
+                <>
+                  <p><strong>Método Auth:</strong> {user.credential.credentialSubject.authMethod}</p>
+                  <p><strong>Estado Cuenta:</strong> {user.credential.credentialSubject.accountState}</p>
+                  <p><strong>Verificado:</strong> {user.credential.credentialSubject.isVerified ? '✅ Sí' : '⏳ Pendiente'}</p>
+                </>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Botones para generar pruebas ZKP */}
+        {user.credential && (
+          <div className="zkp-info">
+            <h3>🔐 Generar Pruebas ZKP</h3>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '15px' }}>
+              <button 
+                onClick={() => handleGenerateProof('authMethod')}
+                disabled={generatingProof}
+                className="btn-primary"
+                style={{ flex: '1', minWidth: '150px' }}
+              >
+                {generatingProof ? 'Generando...' : 'Probar Método Auth'}
+              </button>
+              
+              <button 
+                onClick={() => handleGenerateProof('accountState')}
+                disabled={generatingProof}
+                className="btn-primary"
+                style={{ flex: '1', minWidth: '150px' }}
+              >
+                {generatingProof ? 'Generando...' : 'Probar Estado Activo'}
+              </button>
+              
+              <button 
+                onClick={() => handleGenerateProof('verified')}
+                disabled={generatingProof}
+                className="btn-primary"
+                style={{ flex: '1', minWidth: '150px' }}
+              >
+                {generatingProof ? 'Generando...' : 'Probar Verificado'}
+              </button>
+            </div>
+            
+            {proofResult && (
+              <div style={{
+                marginTop: '15px',
+                padding: '15px',
+                background: proofResult.success ? '#d4edda' : '#f8d7da',
+                border: `1px solid ${proofResult.success ? '#c3e6cb' : '#f5c6cb'}`,
+                borderRadius: '5px'
+              }}>
+                {proofResult.success ? (
+                  <>
+                    <p><strong>✅ Resultado:</strong> {proofResult.message}</p>
+                    <p><strong>Verificado:</strong> {proofResult.verified ? 'SÍ ✓' : 'NO ✗'}</p>
+                  </>
+                ) : (
+                  <p><strong>❌ Error:</strong> {proofResult.error}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
         
         <div className="features">
           <div className="feature-card">
-            <h3>Pruebas ZKP</h3>
-            <p>Crear pruebas de conocimiento cero</p>
+            <h3>🔐 Pruebas ZKP</h3>
+            <p>Genera pruebas de conocimiento cero para verificar atributos sin revelar datos</p>
             {user.did && (
-              <small className="status-ok">DID disponible</small>
+              <small className="status-ok">✅ DID disponible - Listo para generar pruebas</small>
             )}
-          </div>
-          
-          <div className="feature-card">
-            <h3>Estadisticas</h3>
-            <p>Ver tu actividad</p>
           </div>
         </div>
       </div>

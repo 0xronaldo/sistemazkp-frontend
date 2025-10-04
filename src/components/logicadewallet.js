@@ -1,7 +1,8 @@
 // Logica de autenticacion con wallet (MetaMask)
 // Maneja conexion, firma y autenticacion con blockchain
+// Usa SessionManager para almacenamiento seguro
 
-import api from './connissuer';
+import { apiClient, SessionManager } from './connissuer';
 
 /**
  * Verifica si MetaMask esta instalado
@@ -51,18 +52,16 @@ export const connectWallet = async () => {
  * Autentica al usuario usando su wallet
  * Crea o recupera un DID asociado a la wallet address
  * @param {string} walletAddress - Direccion de la wallet
+ * @param {string} signature - Firma opcional para verificacion
  * @returns {Promise} - Datos del usuario con DID
  */
-export const authenticateWithWallet = async (walletAddress) => {
+export const authenticateWithWallet = async (walletAddress, signature = null) => {
     try {
         console.log('[Wallet] Autenticando con wallet:', walletAddress);
 
-        const response = await api.post('/api/wallet-auth', {
-            walletAddress,
-            name: `Wallet ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-        });
+        const response = await apiClient.walletAuth(walletAddress, signature);
 
-        const { did, user, zkpData, credential } = response.data;
+        const { did, user, zkpData, credential, token } = response.data;
 
         console.log('[Wallet] Autenticacion exitosa:', {
             did,
@@ -70,21 +69,25 @@ export const authenticateWithWallet = async (walletAddress) => {
             hasCredential: !!credential
         });
 
-        // Guardar datos en localStorage
+        // Preparar datos del usuario
         const userData = {
             ...user,
             did,
             zkpData,
             credential,
-            walletAddress
+            walletAddress,
+            token,
+            type: 'wallet',
+            timestamp: Date.now()
         };
         
-        localStorage.setItem('zkp_user', JSON.stringify(userData));
+        // Guardar en sesion segura (Base64 + sessionStorage)
+        SessionManager.saveUser(userData);
         
         return userData;
     } catch (error) {
         console.error('[Wallet] Error en autenticacion:', error.response?.data || error.message);
-        throw new Error(error.response?.data?.error || 'Error autenticando con wallet');
+        throw new Error(error.response?.data?.error || error.message || 'Error autenticando con wallet');
     }
 };
 
@@ -92,20 +95,23 @@ export const authenticateWithWallet = async (walletAddress) => {
  * Solicita firma de un mensaje con MetaMask
  * Util para verificar propiedad de la wallet
  * @param {string} walletAddress - Direccion de la wallet
- * @param {string} message - Mensaje a firmar
+ * @param {string} message - Mensaje a firmar (por defecto usa timestamp)
  * @returns {Promise<string>} - Firma del mensaje
  */
-export const signMessage = async (walletAddress, message) => {
+export const signMessage = async (walletAddress, message = null) => {
     try {
         if (!isMetaMaskInstalled()) {
             throw new Error('MetaMask no esta instalado');
         }
 
+        // Si no se proporciona mensaje, usar uno por defecto con timestamp
+        const messageToSign = message || `Autenticacion ZKP - ${Date.now()}`;
+
         console.log('[Wallet] Solicitando firma de mensaje...');
 
         const signature = await window.ethereum.request({
             method: 'personal_sign',
-            params: [message, walletAddress]
+            params: [messageToSign, walletAddress]
         });
 
         console.log('[Wallet] Mensaje firmado exitosamente');
@@ -147,6 +153,27 @@ export const getWalletBalance = async (walletAddress) => {
 };
 
 /**
+ * Obtiene la red actual de MetaMask
+ * @returns {Promise<string>} - Chain ID
+ */
+export const getCurrentChain = async () => {
+    try {
+        if (!isMetaMaskInstalled()) {
+            throw new Error('MetaMask no esta instalado');
+        }
+
+        const chainId = await window.ethereum.request({
+            method: 'eth_chainId'
+        });
+
+        return chainId;
+    } catch (error) {
+        console.error('[Wallet] Error obteniendo chain:', error);
+        throw error;
+    }
+};
+
+/**
  * Detecta cambios en la cuenta de MetaMask
  * @param {function} callback - Funcion a ejecutar cuando cambia la cuenta
  */
@@ -154,7 +181,14 @@ export const onAccountsChanged = (callback) => {
     if (isMetaMaskInstalled()) {
         window.ethereum.on('accountsChanged', (accounts) => {
             console.log('[Wallet] Cuenta cambiada:', accounts[0]);
-            callback(accounts[0]);
+            
+            // Si el usuario desconecto todas las cuentas
+            if (accounts.length === 0) {
+                SessionManager.clearUser();
+                callback(null);
+            } else {
+                callback(accounts[0]);
+            }
         });
     }
 };
@@ -168,6 +202,37 @@ export const onChainChanged = (callback) => {
         window.ethereum.on('chainChanged', (chainId) => {
             console.log('[Wallet] Red cambiada:', chainId);
             callback(chainId);
+            
+            // Recargar la pagina cuando cambia la red (recomendado por MetaMask)
+            window.location.reload();
         });
+    }
+};
+
+/**
+ * Conecta y autentica con wallet en un solo paso
+ * Opcionalmente solicita firma para mayor seguridad
+ * @param {boolean} requireSignature - Si se requiere firma del usuario
+ * @returns {Promise} - Datos del usuario autenticado
+ */
+export const connectAndAuthenticate = async (requireSignature = false) => {
+    try {
+        // 1. Conectar wallet
+        const walletAddress = await connectWallet();
+        
+        // 2. Opcionalmente solicitar firma
+        let signature = null;
+        if (requireSignature) {
+            const message = `Autenticar en Sistema ZKP\nWallet: ${walletAddress}\nTimestamp: ${Date.now()}`;
+            signature = await signMessage(walletAddress, message);
+        }
+        
+        // 3. Autenticar con el backend
+        const userData = await authenticateWithWallet(walletAddress, signature);
+        
+        return userData;
+    } catch (error) {
+        console.error('[Wallet] Error en proceso completo:', error);
+        throw error;
     }
 };

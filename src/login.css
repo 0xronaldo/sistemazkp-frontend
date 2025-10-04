@@ -131,13 +131,13 @@ body {
   color: #5a6fd8;
 }
 
-/* Estilos del Dashboard */
-.dashboard {
+/* Estilos de la Pagina de Session */
+.pagina-session {
   min-height: 100vh;
   background: #f8f9fa;
 }
 
-.dashboard-header {
+.pagina-session-header {
   background: #667eea;
   color: white;
   padding: 20px;
@@ -147,7 +147,7 @@ body {
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
-.dashboard-header h1 {
+.pagina-session-header h1 {
   margin: 0;
   font-size: 24px;
 }
@@ -176,20 +176,20 @@ body {
   background: #c82333;
 }
 
-.dashboard-content {
+.pagina-session-content {
   padding: 40px 20px;
   max-width: 1000px;
   margin: 0 auto;
   text-align: center;
 }
 
-.dashboard-content h2 {
+.pagina-session-content h2 {
   color: #333;
   margin-bottom: 10px;
   font-size: 28px;
 }
 
-.dashboard-content > p {
+.pagina-session-content > p {
   color: #666;
   margin-bottom: 40px;
   font-size: 18px;
@@ -303,7 +303,7 @@ body {
     padding: 30px 20px;
   }
   
-  .dashboard-header {
+  .pagina-session-header {
     flex-direction: column;
     gap: 15px;
     text-align: center;
@@ -313,7 +313,7 @@ body {
     grid-template-columns: 1fr;
   }
   
-  .dashboard-content {
+  .pagina-session-content {
     padding: 20px 15px;
   }
 }
