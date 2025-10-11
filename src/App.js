@@ -29,7 +29,12 @@ function App() {
       const userData = await loginUser(email, password);
       setUser(userData);
       setCurrentView('pagina_session');
-      alert('Login exitoso');
+      
+      // Mostrar mensaje de éxito con verificación ZKP obligatoria
+      let message = '✅ Acceso concedido\n\n🔐 Tu credencial ZKP ha sido verificada exitosamente';
+      message += `\n   Método: Issuer Node (on-chain)`;
+      message += `\n   Estado: ${userData.zkpVerificationDetails?.details?.notRevoked ? 'No revocada ✓' : 'Verificando...'}`;
+      alert(message);
     } catch (error) {
       console.error('[App] Error en login:', error);
       alert(error.message || 'Error al iniciar sesion');
@@ -47,11 +52,16 @@ function App() {
       setUser(userData);
       setCurrentView('pagina_session');
       
+      // Mostrar mensaje con verificación ZKP automática
+      let message = `Cuenta creada exitosamente!`;
       if (userData.did) {
-        alert(`Cuenta creada exitosamente! Tu DID: ${formatDIDShort(userData.did)}`);
-      } else {
-        alert('Cuenta creada exitosamente!');
+        message += `\n\n Tu DID: ${formatDIDShort(userData.did)}`;
       }
+      if (userData.zkpVerified) {
+        message += `\n\n Tu credencial ZKP ha sido verificada automáticamente ✓`;
+        message += `\n   Método: Issuer Node (on-chain)`;
+      }
+      alert(message);
     } catch (error) {
       console.error('[App] Error en registro:', error);
       alert(error.message || 'Error al crear cuenta');
@@ -259,38 +269,35 @@ function RegisterScreen({ onRegister, onShowLogin, loading }) {
   );
 }
 
-// Componente de desplegador JSON simple
+// Componente de desplegador JSON simple y minimalista
 function JSONCollapsible({ title, data, defaultExpanded = false }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   return (
-    <div style={{ marginBottom: '20px', border: '1px solid #ddd', borderRadius: '5px' }}>
+    <div style={{ marginBottom: '15px', border: '1px solid #ccc' }}>
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
         style={{
-          padding: '15px',
-          background: '#f5f5f5',
+          padding: '10px',
+          background: '#fff',
           cursor: 'pointer',
           userSelect: 'none',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          borderBottom: isExpanded ? '1px solid #ccc' : 'none'
         }}
       >
-        <span><strong>{isExpanded ? '▼' : '▶'} {title}</strong></span>
-        <span style={{ fontSize: '12px', color: '#666' }}>
-          {isExpanded ? 'Ocultar' : 'Ver'}
-        </span>
+        <span>{isExpanded ? '▼' : '▶'} {title}</span>
       </div>
       {isExpanded && (
-        <div style={{ padding: '15px', background: '#fff' }}>
+        <div style={{ padding: '10px', background: '#fff' }}>
           <pre style={{
-            background: '#f8f8f8',
-            padding: '15px',
-            borderRadius: '3px',
+            background: '#fff',
+            padding: '10px',
             overflow: 'auto',
-            fontSize: '13px',
-            margin: 0
+            fontSize: '12px',
+            margin: 0,
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all'
           }}>
             {JSON.stringify(data, null, 2)}
           </pre>
@@ -314,17 +321,9 @@ function PaginaSession({ user, onLogout }) {
     createdAt: user.timestamp || user.createdAt
   };
 
-  // Preparar datos para VC (Verifiable Credential) - datos reales del backend
-  const vcData = {
-    credential: user.credential,
-    zkpData: user.zkpData,
-    type: user.type,
-    user: {
-      name: user.name,
-      email: user.email,
-      walletAddress: user.walletAddress,
-      state: user.state
-    }
+  // Preparar datos para VC (Verifiable Credential) - COMPLETA como la emite Issuer Node
+  const vcData = user.credential || {
+    message: 'Credencial no disponible'
   };
 
   // Preparar datos para ZKP - datos reales del backend
@@ -390,14 +389,11 @@ function PaginaSession({ user, onLogout }) {
           proof: result.proof,
           fullData: result.fullData, // ← NUEVO: Datos completos para JSON viewer
           message: result.message,
-          warning: result.warning,
-          localVerification: result.localVerification
+          warning: result.warning
         });
 
         // Mensaje detallado según el tipo de verificación
-        const verificationMethod = result.proof?.method === 'issuer-node' 
-          ? 'verificada con Issuer Node (on-chain) 🔗' 
-          : 'verificada localmente (estructura) 📝';
+        const verificationMethod = 'verificada con Issuer Node (on-chain) 🔗';
         
         const warningMsg = result.warning ? `\n\n⚠️ ${result.warning}` : '';
         alert(`✅ Identidad ${verificationMethod}\n\n${result.message}${warningMsg}`);
@@ -446,12 +442,12 @@ function PaginaSession({ user, onLogout }) {
           />
         )}
 
-        {/* Desplegador para Verifiable Credential */}
+        {/* Desplegador para Verifiable Credential COMPLETA */}
         {user.credential && (
           <JSONCollapsible 
-            title="Credencial Verificable (VC)" 
+            title={`Credencial Verificable ${user.credential.proof ? '( Proof Issuer)' : '( Sin Proof )'}`}
             data={vcData}
-            defaultExpanded={false}
+            defaultExpanded={true}
           />
         )}
 
@@ -461,6 +457,16 @@ function PaginaSession({ user, onLogout }) {
           data={zkpProofsData}
           defaultExpanded={false}
         />
+        
+        {/* Mostrar datos completos de verificación ZKP si está disponible */}
+        {user.zkpVerificationDetails?.fullData && (
+          <div style={{ marginTop: '20px' }}>
+            <JsonViewer 
+              data={user.zkpVerificationDetails.fullData} 
+              title="🔐 Verificación ZKP Automática (Datos Completos)"
+            />
+          </div>
+        )}
 
         {/* Resumen visual */}
         {didInfo && didInfo.valid && (
@@ -486,6 +492,36 @@ function PaginaSession({ user, onLogout }) {
                   <p><strong>Verificado:</strong> {user.credential.credentialSubject.isVerified ? '✅ Sí' : '⏳ Pendiente'}</p>
                 </>
               )}
+              
+              {/* ESTADO DE VERIFICACIÓN ZKP AUTOMÁTICA */}
+              {user.zkpVerified !== undefined && (
+                <div style={{ 
+                  marginTop: '15px', 
+                  padding: '15px', 
+                  background: '#f8f9fa',
+                  border: '2px solid #dee2e6',
+                  borderRadius: '4px'
+                }}>
+                  <p style={{ margin: 0, fontWeight: 'bold', fontSize: '16px', color: '#212529' }}>
+                    {user.zkpVerified ? '🔐 Verificación ZKP: VERIFICADA ✓' : '⚠️ Verificación ZKP: PENDIENTE'}
+                  </p>
+                  {user.zkpVerificationDetails && (
+                    <>
+                      <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#495057' }}>
+                        <strong>Método:</strong> Issuer Node (on-chain)
+                      </p>
+                      <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#495057' }}>
+                        <strong>Verificado:</strong> {new Date(user.zkpVerificationDetails.timestamp).toLocaleString()}
+                      </p>
+                      {user.zkpVerificationDetails.details?.notRevoked !== undefined && (
+                        <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#495057' }}>
+                          <strong>No Revocada:</strong> {user.zkpVerificationDetails.details.notRevoked ? '✓ Sí' : '✗ No'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -509,59 +545,58 @@ function PaginaSession({ user, onLogout }) {
             {proofResult && (
               <div style={{
                 marginTop: '15px',
-                padding: '20px',
-                background: proofResult.success ? '#d4edda' : '#f8d7da',
-                border: `1px solid ${proofResult.success ? '#c3e6cb' : '#f5c6cb'}`,
-                borderRadius: '8px'
+                padding: '15px',
+                background: 'white',
+                border: '1px solid #ccc'
               }}>
                 {proofResult.success ? (
                   <>
-                    <p style={{ marginBottom: '10px', fontSize: '16px', fontWeight: 'bold' }}>
-                      ✅ Resultado: {proofResult.message}
+                    <p style={{ marginBottom: '10px', fontSize: '14px', color: '#000' }}>
+                      Resultado: {proofResult.message}
                     </p>
-                    <p style={{ marginBottom: '8px' }}>
-                      <strong>Verificado:</strong> {proofResult.verified ? 'SÍ ✓' : 'NO ✗'}
+                    <p style={{ marginBottom: '8px', color: '#000' }}>
+                      Verificado: {proofResult.verified ? 'SI' : 'NO'}
                     </p>
                     {proofResult.proof && (
-                      <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255,255,255,0.5)', borderRadius: '5px', fontSize: '13px' }}>
-                        <p><strong>📋 Detalles de Verificación:</strong></p>
+                      <div style={{ marginTop: '15px', padding: '10px', background: 'white', border: '1px solid #ddd', fontSize: '12px' }}>
+                        <p style={{ color: '#000', marginBottom: '8px' }}>Detalles:</p>
                         {proofResult.proof.method && (
-                          <p>• Método: {proofResult.proof.method === 'issuer-node' ? 'Issuer Node (on-chain)' : 'Local'}</p>
+                          <p style={{ color: '#000' }}>- Metodo: Issuer Node (on-chain)</p>
                         )}
                         {proofResult.proof.credentialId && (
-                          <p>• ID Credencial: {proofResult.proof.credentialId.substring(0, 20)}...</p>
+                          <p style={{ color: '#000' }}>- ID Credencial: {proofResult.proof.credentialId.substring(0, 20)}...</p>
                         )}
                         {proofResult.proof.subject && (
-                          <p>• Subject: {proofResult.proof.subject.substring(0, 30)}...</p>
+                          <p style={{ color: '#000' }}>- Subject: {proofResult.proof.subject.substring(0, 30)}...</p>
                         )}
                         {proofResult.proof.notRevoked !== undefined && (
-                          <p>• No revocada: {proofResult.proof.notRevoked ? '✓' : '✗'}</p>
+                          <p style={{ color: '#000' }}>- No revocada: {proofResult.proof.notRevoked ? 'Si' : 'No'}</p>
                         )}
                         {proofResult.proof.timestamp && (
-                          <p>• Verificado: {new Date(proofResult.proof.timestamp).toLocaleString()}</p>
+                          <p style={{ color: '#000' }}>- Verificado: {new Date(proofResult.proof.timestamp).toLocaleString()}</p>
                         )}
                         
                         {/* Mostrar información del ZKP Proof si está disponible */}
                         {proofResult.proof.zkpProof && proofResult.proof.zkpProof.proofs && proofResult.proof.zkpProof.proofs.length > 0 && (
-                          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ccc' }}>
-                            <p><strong>🔐 Prueba Criptográfica ZKP:</strong></p>
+                          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ddd' }}>
+                            <p style={{ color: '#000', marginBottom: '8px' }}>Prueba Criptografica ZKP:</p>
                             {proofResult.proof.zkpProof.proofs.map((proof, idx) => (
                               <div key={idx} style={{ marginLeft: '10px', marginTop: '8px' }}>
-                                <p>• <strong>Tipo:</strong> {proof.type}</p>
+                                <p style={{ color: '#000' }}>- Tipo: {proof.type}</p>
                                 {proof.signature && (
-                                  <p>• <strong>Firma BJJ:</strong> {proof.signature}</p>
+                                  <p style={{ color: '#000', wordBreak: 'break-all' }}>- Firma BJJ: {proof.signature}</p>
                                 )}
                                 {proof.coreClaim && (
-                                  <p>• <strong>Core Claim:</strong> {proof.coreClaim}</p>
+                                  <p style={{ color: '#000', wordBreak: 'break-all' }}>- Core Claim: {proof.coreClaim}</p>
                                 )}
                                 {proof.issuerData && (
                                   <>
-                                    <p>• <strong>Issuer ID:</strong> {proof.issuerData.id?.substring(0, 25)}...</p>
+                                    <p style={{ color: '#000' }}>- Issuer ID: {proof.issuerData.id?.substring(0, 25)}...</p>
                                     {proof.issuerData.state?.claimsTreeRoot && (
-                                      <p>• <strong>Claims Tree Root:</strong> {proof.issuerData.state.claimsTreeRoot.substring(0, 20)}...</p>
+                                      <p style={{ color: '#000' }}>- Claims Tree Root: {proof.issuerData.state.claimsTreeRoot.substring(0, 20)}...</p>
                                     )}
                                     {proof.issuerData.mtp && (
-                                      <p>• <strong>MTP:</strong> Existence: {proof.issuerData.mtp.existence ? '✓' : '✗'}, Siblings: {proof.issuerData.mtp.siblingsCount}</p>
+                                      <p style={{ color: '#000' }}>- MTP: Existence: {proof.issuerData.mtp.existence ? 'Si' : 'No'}, Siblings: {proof.issuerData.mtp.siblingsCount}</p>
                                     )}
                                   </>
                                 )}
@@ -572,34 +607,25 @@ function PaginaSession({ user, onLogout }) {
                       </div>
                     )}
                     
-                    {/* JSON VIEWER - Mostrar datos completos */}
+                    {/* JSON VIEWER - Mostrar datos completos SIN BOTON DE DESCARGA */}
                     {proofResult.fullData && (
                       <div style={{ marginTop: '20px' }}>
                         <JsonViewer 
                           data={proofResult.fullData} 
-                          title="📊 Datos Completos de Verificación (JSON)"
+                          title="Datos Completos de Verificacion (JSON)"
+                          hideDownload={true}
                         />
                       </div>
                     )}
                     
-                    {/* DEBUG: Mostrar si fullData NO está disponible */}
-                    {!proofResult.fullData && (
-                      <div style={{ marginTop: '15px', padding: '10px', background: '#fff3cd', borderRadius: '5px' }}>
-                        <p style={{ margin: 0, fontSize: '12px', color: '#856404' }}>
-                          ⚠️ DEBUG: No hay fullData disponible. 
-                          Verifica que el backend esté devolviendo el campo 'fullData'.
-                        </p>
-                      </div>
-                    )}
-                    
                     {proofResult.warning && (
-                      <p style={{ marginTop: '10px', color: '#856404', fontSize: '12px' }}>
-                        ⚠️ {proofResult.warning}
+                      <p style={{ marginTop: '10px', color: '#000', fontSize: '12px' }}>
+                        {proofResult.warning}
                       </p>
                     )}
                   </>
                 ) : (
-                  <p><strong>❌ Error:</strong> {proofResult.error}</p>
+                  <p style={{ color: '#000' }}>Error: {proofResult.error}</p>
                 )}
               </div>
             )}

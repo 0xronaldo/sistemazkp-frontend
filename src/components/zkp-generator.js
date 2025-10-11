@@ -42,7 +42,7 @@ export async function verifyCredential(credential, issuerDID) {
         const data = await response.json();
 
         if (!response.ok) {
-            console.error('❌ [ZKP] Error del backend:', data);
+            console.error('[ZKP] Error del backend:', data);
             return {
                 success: false,
                 verified: false,
@@ -52,7 +52,7 @@ export async function verifyCredential(credential, issuerDID) {
             };
         }
 
-        console.log('✅ [ZKP] Verificación completada:', {
+        console.log('[ZKP] Verificación completada:', {
             verified: data.verified,
             hasProof: !!data.proof,
             hasFullData: !!data.fullData,
@@ -65,11 +65,10 @@ export async function verifyCredential(credential, issuerDID) {
             proof: data.proof,
             fullData: data.fullData, // ← IMPORTANTE: Pasar datos completos para JSON viewer
             message: data.message || 'Credencial verificada correctamente',
-            warning: data.warning,
-            localVerification: data.localVerification
+            warning: data.warning
         };
     } catch (error) {
-        console.error('❌ [ZKP] Error en verificación:', error.message);
+        console.error('[ZKP] Error en verificación:', error.message);
         return {
             success: false,
             verified: false,

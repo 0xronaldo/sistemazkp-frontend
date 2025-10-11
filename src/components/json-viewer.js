@@ -4,7 +4,7 @@ import './json-viewer.css';
 /**
  * Componente para mostrar datos en formato JSON con sintaxis coloreada
  */
-function JsonViewer({ data, title = "JSON Data" }) {
+function JsonViewer({ data, title = "JSON Data", hideDownload = false }) {
     const [isExpanded, setIsExpanded] = useState(true);
     const [copiedPath, setCopiedPath] = useState(null);
 
@@ -138,13 +138,15 @@ function JsonViewer({ data, title = "JSON Data" }) {
                     >
                         {copiedPath === 'root' ? '✓ Copiado' : '📋 Copiar'}
                     </button>
-                    <button 
-                        className="json-action-btn"
-                        onClick={downloadJSON}
-                        title="Descargar JSON"
-                    >
-                        💾 Descargar
-                    </button>
+                    {!hideDownload && (
+                        <button 
+                            className="json-action-btn"
+                            onClick={downloadJSON}
+                            title="Descargar JSON"
+                        >
+                            💾 Descargar
+                        </button>
+                    )}
                 </div>
             </div>
             

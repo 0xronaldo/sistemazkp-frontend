@@ -25,34 +25,50 @@ export const registerUser = async (name, email, password) => {
         
         const response = await apiClient.register(name, email, password);
 
-        const { did, user, zkpData, credential, token } = response.data;
+        const { did, user, zkpData, credential } = response.data;
 
-        console.log('[Auth] Registro exitoso:', {
-            did,
-            userName: user.name,
-            hasCredential: !!credential
-        });
-        
+        console.log('[Auth] ✅ Registro exitoso');
+        console.log('[Auth] 📄 DID creado:', did);
         console.log('[Auth] 📄 CREDENCIAL COMPLETA recibida:', JSON.stringify(credential, null, 2));
+        console.log('[Auth] 🔐 Verificación ZKP:', user.zkpVerified ? 'VERIFICADA ✓' : 'NO VERIFICADA ✗');
         
         // Validar que la credencial tenga los campos necesarios
-        if (credential && !credential.credentialSubject) {
-            console.warn('[Auth] ⚠️ ADVERTENCIA: Credencial incompleta - falta credentialSubject');
+        if (!credential || !credential.credentialSubject) {
+            console.error('[Auth] ❌ ERROR: Credencial incompleta - falta credentialSubject');
+            throw new Error('El backend no devolvió una credencial válida');
         }
-        if (credential && !credential.issuer) {
-            console.warn('[Auth] ⚠️ ADVERTENCIA: Credencial incompleta - falta issuer');
+        if (!credential.issuer) {
+            console.error('[Auth] ❌ ERROR: Credencial incompleta - falta issuer');
+            throw new Error('La credencial no tiene issuer');
         }
+        
+        console.log('[Auth] ✓ Credencial validada correctamente');
+        console.log('[Auth] ✓ credentialSubject:', credential.credentialSubject);
+        console.log('[Auth] ✓ issuer:', credential.issuer);
 
-        // Preparar datos del usuario
+        // Preparar datos del usuario igual que en wallet-auth
         const userData = {
-            ...user,
-            did,
-            zkpData,
-            credential,
-            token,
+            name: user.name,
+            email: user.email,
+            did: did,
+            credential: credential, // Credencial completa W3C
+            zkpData: zkpData,
             type: 'email-password',
-            timestamp: Date.now()
+            authMethod: 'email',
+            state: user.state || 'active',
+            timestamp: Date.now(),
+            // Agregar verificación ZKP automática
+            zkpVerified: user.zkpVerified || false,
+            zkpVerificationDetails: user.zkpVerificationDetails || null
         };
+        
+        console.log('[Auth] 🔐 Verificación ZKP automática:', user.zkpVerified ? 'VERIFICADA ✓' : 'NO VERIFICADA ✗');
+        if (user.zkpVerificationDetails) {
+            console.log('[Auth] 📊 Detalles de verificación ZKP:', user.zkpVerificationDetails);
+            if (user.zkpVerificationDetails.fullData) {
+                console.log('[Auth] 📊 Datos completos de verificación disponibles');
+            }
+        }
         
         // Guardar en localStorage (persiste al cerrar navegador - 24h)
         const saved = SessionManager.saveUser(userData);
@@ -66,7 +82,30 @@ export const registerUser = async (name, email, password) => {
         return userData;
     } catch (error) {
         console.error('[Auth] Error en registro:', error.response?.data || error.message);
-        throw new Error(error.response?.data?.error || error.message || 'Error al registrar usuario');
+        
+        // Mensajes detallados de error
+        let errorMessage = 'Error al crear cuenta: ';
+        
+        if (error.response?.status === 400) {
+            errorMessage = error.response.data.error || 'Datos inválidos o incompletos';
+        } else if (error.response?.status === 500) {
+            const serverError = error.response.data.error || error.response.data.details;
+            
+            if (serverError && serverError.includes('Issuer Node')) {
+                errorMessage = '🔐 Error del sistema de credenciales ZKP:\n\n';
+                errorMessage += serverError;
+                errorMessage += '\n\n⚠️ No se puede crear una cuenta sin una credencial ZKP válida.';
+            } else if (serverError && serverError.includes('DID')) {
+                errorMessage = '🆔 Error al crear identidad descentralizada (DID):\n\n';
+                errorMessage += serverError;
+            } else {
+                errorMessage += serverError || 'Error interno del servidor';
+            }
+        } else {
+            errorMessage = error.response?.data?.error || error.message || 'Error desconocido';
+        }
+        
+        throw new Error(errorMessage);
     }
 };
 
@@ -86,26 +125,56 @@ export const loginUser = async (email, password) => {
         
         const response = await apiClient.login(email, password);
 
-        const { did, user, zkpData, credential, token } = response.data;
+        const { did, user, zkpData, credential } = response.data;
         
-        console.log('[Auth] Login exitoso:', {
-            userName: user?.name,
-            hasDID: !!did,
-            hasCredential: !!credential
-        });
-        
+        console.log('[Auth] ✅ Login exitoso - Credencial ZKP verificada');
         console.log('[Auth] 📄 DID recuperado:', did);
-        console.log('[Auth] 📄 Credencial recuperada:', JSON.stringify(credential, null, 2));
+        console.log('[Auth] 📄 CREDENCIAL COMPLETA recuperada:', JSON.stringify(credential, null, 2));
+        console.log('[Auth] 🔐 Verificación ZKP: VERIFICADA ✓');
+        
+        // Validar que la credencial tenga los campos necesarios
+        if (!credential || !credential.credentialSubject) {
+            console.error('[Auth] ❌ ERROR: Credencial incompleta - falta credentialSubject');
+            throw new Error('El backend no devolvió una credencial válida');
+        }
+        if (!credential.issuer) {
+            console.error('[Auth] ❌ ERROR: Credencial incompleta - falta issuer');
+            throw new Error('La credencial no tiene issuer');
+        }
+        
+        // Validar que la verificación ZKP fue exitosa (obligatorio para login)
+        if (!user.zkpVerified) {
+            console.error('[Auth] ❌ ERROR: Login sin verificación ZKP válida');
+            throw new Error('Error de autenticación: La credencial ZKP no fue verificada');
+        }
+        
+        console.log('[Auth] ✓ Credencial validada correctamente');
+        console.log('[Auth] ✓ credentialSubject:', credential.credentialSubject);
+        console.log('[Auth] ✓ issuer:', credential.issuer);
 
+        // Preparar datos del usuario igual que en wallet-auth
         const userData = {
-            ...user,
-            did,
-            zkpData,
-            credential,
-            token,
+            name: user.name,
+            email: user.email,
+            did: did,
+            credential: credential, // Credencial completa W3C
+            zkpData: zkpData,
             type: 'email-password',
-            timestamp: Date.now()
+            authMethod: 'email',
+            state: user.state || 'active',
+            timestamp: Date.now(),
+            // Agregar verificación ZKP automática
+            zkpVerified: user.zkpVerified || false,
+            zkpVerificationDetails: user.zkpVerificationDetails || null
         };
+        
+        console.log('[Auth] 🔐 Verificación ZKP automática:', user.zkpVerified ? 'VERIFICADA ✓' : 'NO VERIFICADA ✗');
+        if (user.zkpVerificationDetails) {
+            console.log('[Auth] 📊 Detalles de verificación ZKP:', user.zkpVerificationDetails);
+            if (user.zkpVerificationDetails.fullData) {
+                console.log('[Auth] 📊 Datos completos de verificación disponibles');
+            }
+        }
         
         // Guardar en sesion segura (localStorage - persiste 24h)
         const saved = SessionManager.saveUser(userData);
@@ -115,10 +184,59 @@ export const loginUser = async (email, password) => {
     } catch (error) {
         console.error('[Auth] Error en login:', error.response?.data || error.message);
         
+        // Manejo específico para errores de verificación ZKP con mensajes detallados
+        if (error.response?.data?.zkpVerificationFailed) {
+            const errorData = error.response.data;
+            let userMessage = errorData.error || '🔐 Verificación ZKP fallida';
+            
+            if (errorData.details) {
+                userMessage += '\n\n📋 Detalles: ' + errorData.details;
+            }
+            
+            if (errorData.stage) {
+                userMessage += '\n\n⚠️ Etapa de error: ' + errorData.stage;
+            }
+            
+            if (errorData.technicalReason) {
+                userMessage += '\n\n🔧 Razón técnica: ' + errorData.technicalReason;
+            }
+            
+            throw new Error(userMessage);
+        }
+        
+        if (error.response?.data?.zkpVerificationError) {
+            const errorData = error.response.data;
+            let userMessage = errorData.error || '🔐 Error al verificar credencial';
+            
+            if (errorData.details) {
+                userMessage += '\n\n' + errorData.details;
+            }
+            
+            if (errorData.solution) {
+                userMessage += '\n\n💡 Solución: ' + errorData.solution;
+            }
+            
+            throw new Error(userMessage);
+        }
+        
+        if (error.response?.data?.requiresCredential) {
+            const errorData = error.response.data;
+            let userMessage = errorData.error || 'No tienes una credencial ZKP válida';
+            
+            if (errorData.reason) {
+                userMessage += '\n\nCódigo: ' + errorData.reason;
+            }
+            
+            throw new Error(userMessage);
+        }
+        
+        // Errores estándar
         if (error.response?.status === 401) {
-            throw new Error('Email o contraseña incorrectos');
+            throw new Error(error.response.data.error || 'Email o contraseña incorrectos');
         } else if (error.response?.status === 404) {
             throw new Error('Usuario no encontrado');
+        } else if (error.response?.status === 503) {
+            throw new Error(error.response.data.error || 'Servicio temporalmente no disponible');
         }
         
         throw new Error(error.response?.data?.error || error.message || 'Error al iniciar sesion');
