@@ -1,29 +1,29 @@
 # Sistema ZKP - Frontend
 
-React SPA para sistema de autenticación descentralizada con Zero Knowledge Proofs (ZKP).
+React sistema de autenticación descentralizada con Zero Knowledge Proofs (ZKP).
 
-## 🚀 Inicio Rápido
+## Inicio Rápido
 
 ```bash
 npm install
 npm start
 ```
 
-Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
+Abre [http://localhost:3000](http://localhost:3000).
 
-## 🏗️ Arquitectura
+## Arquitectura
 
 ### Componentes Principales (todos en `src/App.js`)
 
 - **LoginScreen**: Login con email/password o MetaMask
 - **RegisterScreen**: Registro de nuevos usuarios
-- **DashboardScreen**: Dashboard con información ZKP
+- **PaginaSession**: Dashboard con información ZKP
 
 ### Estado de la Aplicación
 
 ```javascript
 {
-  currentView: 'login' | 'register' | 'dashboard',
+  currentView: 'login' | 'register' | 'pagsession',
   user: {
     name: string,
     email: string,
@@ -36,7 +36,7 @@ Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
 }
 ```
 
-## 🔌 Integración con Backend
+## Integración con Backend
 
 ### Backend URL
 ```javascript
@@ -66,17 +66,17 @@ Body: { walletAddress, name }
 Response: { success, did, user, zkpData, credential }
 ```
 
-## 🎨 Estilos
+## Estilos
 
 Todo centralizado en `src/login.css`:
 
 - `.login-container` - Pantallas de auth con gradiente
-- `.dashboard` - Layout del dashboard
+- `.pagsession` - Layout del dashboard
 - `.zkp-info` - Contenedor de información ZKP
 - `.info-box` - Cajas de información con DIDs
 - Responsive design para móviles
 
-## 🦊 MetaMask Integration
+## MetaMask Integration
 
 ```javascript
 // Conectar wallet
@@ -91,20 +91,20 @@ const response = await fetch(`${BACKEND_URL}/api/wallet-auth`, {
 });
 ```
 
-## 📦 Dependencias
+## Dependencias
 
 - `react` ^19.1.1
 - `react-dom` ^19.1.1
 - `react-scripts` 5.0.1
 
-## 🧪 Testing
+## Testing
 
 ```bash
 npm test        # Tests con Jest
 npm run build   # Build de producción
 ```
 
-## 📁 Estructura
+## Estructura
 
 ```
 src/
@@ -115,7 +115,7 @@ src/
 └── components/      # (vacío - pendiente extracción)
 ```
 
-## 🔐 Flujo de Usuario
+## Flujo de Usuario
 
 ### Registro
 1. Usuario ingresa nombre, email, password
@@ -131,7 +131,7 @@ src/
 4. Backend genera/obtiene DID
 5. Muestra dashboard con DID de wallet
 
-## 📊 Dashboard
+## Pagina de Session
 
 Muestra información ZKP cuando disponible:
 
@@ -151,7 +151,7 @@ Muestra información ZKP cuando disponible:
 )}
 ```
 
-## 🛠️ Configuración
+## Configuración
 
 ### Backend URL
 Cambiar en `App.js` si backend corre en otro puerto:
@@ -159,46 +159,3 @@ Cambiar en `App.js` si backend corre en otro puerto:
 const BACKEND_URL = 'http://localhost:5000';  // Cambiar aquí
 ```
 
-### MetaMask
-Asegúrate de tener MetaMask instalado para autenticación con wallet.
-
-## 📚 Más Información
-
-- **Documentación completa**: Ver `backend_zkp/README.md`
-- **Schemas y VCs**: Ver `backend_zkp/SCHEMAS-DOCS.md`
-- **JSON-LD explicado**: Ver `backend_zkp/JSON-LD-EXPLAINED.md`
-- **Ejemplos**: Ver `backend_zkp/EXAMPLES.md`
-
-## 🐛 Troubleshooting
-
-### Error: "Cannot connect to backend"
-**Solución**: Verificar que backend esté corriendo en puerto 5000
-```bash
-cd backend_zkp && npm run dev
-```
-
-### Error: "MetaMask no está instalado"
-**Solución**: Instalar extension de MetaMask en tu navegador
-
-### Error: "Failed to fetch"
-**Solución**: Verificar CORS en backend - debe tener `cors()` habilitado
-
-## 🚀 Deploy
-
-```bash
-npm run build    # Genera carpeta build/
-# Subir contenido de build/ a hosting (Vercel, Netlify, etc.)
-```
-
-## 📝 Notas de Desarrollo
-
-- Todos los componentes están en un solo archivo (`App.js`)
-- Pendiente: Extraer a archivos separados en `components/`
-- Estado se maneja con hooks de React (`useState`)
-- No hay routing - solo cambio de vista con `currentView`
-
----
-
-**Estado**: ✅ Funcional - Integrado con backend ZKP
-
-Creado con [Create React App](https://github.com/facebook/create-react-app)
